@@ -475,6 +475,12 @@ function adminToolsHtml(m) {
 }
 
 // ---------- Feuilles d'action ----------
+const SELF_LEVELS = [
+  [3, 'Débutant'],
+  [5, 'Moyen'],
+  [7, 'Bon'],
+  [9, 'Très bon'],
+];
 const LEVELS = [
   [3, 'Débutant'],
   [5, 'Moyen'],
@@ -843,6 +849,7 @@ const forms = {
       email: fd.get('email'),
       password: fd.get('password'),
       inviteCode: fd.get('inviteCode'),
+      level: Number(fd.get('level') || 5),
     });
     state.me = r.user;
     state.hasUsers = true;
@@ -1443,6 +1450,11 @@ async function viewRegister(_, query) {
       <label class="field"><span>Prénom ou pseudo</span><input class="input" name="name" required minlength="2" maxlength="30" autocomplete="nickname"><small>C'est le nom que verront les autres.</small></label>
       <label class="field"><span>Email</span><input class="input" type="email" name="email" autocomplete="email" placeholder="facultatif"><small>${state.emailEnabled ? 'Pour recevoir les rappels par email.' : 'Pour te connecter avec ton email.'}</small></label>
       <label class="field"><span>Mot de passe</span><input class="input" type="password" name="password" required minlength="6" autocomplete="new-password"></label>
+      <fieldset class="field">
+        <legend>Ton niveau</legend>
+        <div class="levels">${SELF_LEVELS.map(([v, l]) => `<label class="choice"><input type="radio" name="level" value="${v}" required><span>${l}</span></label>`).join('')}</div>
+        <small>Sois honnête : ça sert uniquement à équilibrer les équipes. Il s'ajuste ensuite tout seul selon tes résultats.</small>
+      </fieldset>
       <label class="field"><span>Code d'invitation</span><input class="input" name="inviteCode" required autocomplete="off" value="${esc(query.get('code') || '')}"></label>
       <p class="error" data-error hidden></p>
       <button class="btn btn-dark btn-block" type="submit">Créer mon compte</button>

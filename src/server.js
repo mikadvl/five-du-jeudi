@@ -163,6 +163,7 @@ export function createApp({ db, service, notifier, trustProxy = true }) {
     const password = String(req.body?.password || '');
     if (password.length < 6) throw bad('Mot de passe : 6 caractères minimum');
     const email = emailOrNull(req.body?.email);
+    const level = req.body?.level === undefined ? 5 : intRange(Number(req.body.level), 1, 10, 'Niveau');
     const s = getSettings(db);
     if (String(req.body?.inviteCode || '').trim() !== s.invite_code) throw new HttpError(403, "Code d'invitation incorrect");
     const user = tx(db, () => {
@@ -171,8 +172,8 @@ export function createApp({ db, service, notifier, trustProxy = true }) {
       if (email && db.prepare('SELECT 1 FROM users WHERE lower(email) = ?').get(email))
         throw new HttpError(409, 'Cet email est déjà utilisé');
       const r = db
-        .prepare('INSERT INTO users (name, name_key, email, password_hash, role, level, elo) VALUES (?, ?, ?, ?, ?, 5, ?)')
-        .run(name, nameKey(name), email, hashPassword(password), first ? 'admin' : 'player', levelRating(5));
+        .prepare('INSERT INTO users (name, name_key, email, password_hash, role, level, elo) VALUES (?, ?, ?, ?, ?, ?, ?)')
+        .run(name, nameKey(name), email, hashPassword(password), first ? 'admin' : 'player', level, levelRating(level));
       return db.prepare('SELECT * FROM users WHERE id = ?').get(r.lastInsertRowid);
     });
     setSessionCookie(req, res, user.id);

@@ -112,3 +112,19 @@ test('rôle capitaine : gère les matchs, pas les réglages ni les comptes', asy
     server.close();
   }
 });
+
+test('le niveau est choisi par le joueur à l’inscription', async () => {
+  const { server, client, code, db } = await boot();
+  try {
+    const a = client();
+    await a('POST', '/api/auth/register', { name: 'Orga', password: 'secret1', inviteCode: code });
+    const b = client();
+    const r = await b('POST', '/api/auth/register', { name: 'Crack', password: 'secret1', inviteCode: code, level: 9 });
+    const u = db.prepare('SELECT level, elo FROM users WHERE id = ?').get(r.body.user.id);
+    assert.equal(u.level, 9);
+    assert.equal(u.elo, 1240);
+    assert.equal((await client()('POST', '/api/auth/register', { name: 'Tricheur', password: 'secret1', inviteCode: code, level: 42 })).status, 400);
+  } finally {
+    server.close();
+  }
+});
