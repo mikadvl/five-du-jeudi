@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Five du jeudi</title>
+    <meta name="description" content="Inscriptions, équipes et stats du five entre potes." />
+    <meta name="theme-color" content="#F2F4F3" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Five" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <link rel="preload" href="/fonts/bricolage-grotesque-latin-800-normal.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/geist-sans-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/css/app.css" />
+  </head>
+  <body>
+    <div class="app">
+      <main id="view" class="view" tabindex="-1"></main>
+    </div>
+    <nav class="tabbar" id="tabbar" hidden aria-label="Navigation principale">
+      <a href="#/" data-tab="home" aria-label="Match">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7.5l4 2.9-1.5 4.8h-5L8 10.4z" /></svg>
+        <span>Match</span>
+      </a>
+      <a href="#/matchs" data-tab="matchs" aria-label="Calendrier">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="3" /><path d="M3.5 10h17M8 3v4M16 3v4" /></svg>
+        <span>Calendrier</span>
+      </a>
+      <a href="#/classement" data-tab="classement" aria-label="Classement">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V11h4v9M10 20V5h4v15M15 20v-6h4v6" /></svg>
+        <span>Classement</span>
+      </a>
+      <a href="#/profil" data-tab="profil" aria-label="Profil">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4" /><path d="M4 21c1-4.5 4.4-6.5 8-6.5s7 2 8 6.5" /></svg>
+        <span>Profil</span>
+      </a>
+    </nav>
+    <div class="toast" id="toast" role="status" hidden></div>
+    <div class="sheet-backdrop" id="sheet" hidden>
+      <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title"></div>
+    </div>
+    <script type="module" src="/js/app.js"></script>
+  </body>
+</html>

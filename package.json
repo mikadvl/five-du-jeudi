@@ -1,0 +1,21 @@
+{
+  "name": "five-du-jeudi",
+  "version": "1.0.0",
+  "description": "Web app (PWA) auto-hébergée pour organiser un five entre potes : inscriptions, liste d'attente, +1, équipes équilibrées, stats et rappels.",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning src/server.js",
+    "dev": "node --disable-warning=ExperimentalWarning --watch src/server.js",
+    "test": "node --disable-warning=ExperimentalWarning --test test/*.test.js",
+    "seed:demo": "DATA_DIR=${DATA_DIR:-./demo-data} node --disable-warning=ExperimentalWarning scripts/seed-demo.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "nodemailer": "^7.0.0",
+    "web-push": "^3.6.7"
+  }
+}

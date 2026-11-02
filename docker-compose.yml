@@ -1,0 +1,28 @@
+# Five du jeudi — à coller dans TrueNAS SCALE : Apps > Discover Apps > ⋮ > Install via YAML
+# (ou `docker compose up -d` sur n'importe quel hôte Docker).
+services:
+  five-du-jeudi:
+    # Image publiée automatiquement par GitHub Actions à chaque push sur main.
+    image: ghcr.io/mikadvl/five-du-jeudi:latest
+    # Alternative sans registre : construire depuis le dépôt cloné sur le NAS
+    # build: .
+    container_name: five-du-jeudi
+    restart: unless-stopped
+    ports:
+      - "8096:3000"
+    volumes:
+      # Base SQLite (five.db). À adapter à ton pool.
+      - /mnt/TANK_VAULT/APPS/FIVE:/data
+    environment:
+      - TZ=Europe/Paris
+      - APP_URL=https://five.vaultnode.fr
+      # À remplacer dans TrueNAS par ton adresse mail (contact obligatoire pour les notifications push)
+      - VAPID_SUBJECT=mailto:toi@example.com
+      # Code d'invitation de départ, à remplacer dans TrueNAS (modifiable ensuite dans l'app)
+      - INVITE_CODE=change-moi
+      # Rappels par email (facultatif) :
+      # - SMTP_HOST=ssl0.ovh.net
+      # - SMTP_PORT=465
+      # - SMTP_USER=five@ton-domaine.fr
+      # - SMTP_PASS=motdepasse
+      # - SMTP_FROM=five@ton-domaine.fr
