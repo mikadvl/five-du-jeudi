@@ -143,6 +143,7 @@ const routes = [
   [/^\/admin$/, viewAdmin, 'profil'],
   [/^\/connexion$/, viewLogin, null],
   [/^\/inscription$/, viewRegister, null],
+  [/^\/bienvenue$/, viewWelcome, 'home'],
 ];
 
 async function render() {
@@ -196,7 +197,7 @@ async function viewHome() {
 
 async function homeHtml(data) {
   let html = homeTopbar();
-  html += await pushNudgeHtml();
+  html += await setupNudgeHtml();
   if (data.pendingVote) {
     html += `<a class="banner" href="#/match/${data.pendingVote.matchId}">
       <span>Vote pour l'homme du match du ${esc(fmt(data.pendingVote.startsAt, { weekday: 'long', day: 'numeric' }))}</span>${ICON.chevron.replace('class="chev"', '')}</a>`;
@@ -715,8 +716,14 @@ const actions = {
   },
   async 'push-enable'() {
     await enablePush();
-    toast('Notifications activées');
+    await api('POST', '/api/me/test-notification').catch(() => {});
+    toast('Rappels activés');
     render();
+  },
+  'setup-later'() {
+    storage.set('fdj-setup-later', '1');
+    if (current.path === '/') view.querySelector('.push-nudge')?.remove();
+    else location.hash = '#/';
   },
   async 'push-test'() {
     const r = await api('POST', '/api/me/test-notification');
@@ -726,10 +733,6 @@ const actions = {
     await disablePush();
     toast('Notifications désactivées sur cet appareil');
     render();
-  },
-  'push-later'(el) {
-    storage.set('fdj-push-nudge', 'later');
-    el.closest('.push-nudge')?.remove();
   },
   async install() {
     if (!state.installPrompt) return;
@@ -811,7 +814,7 @@ const forms = {
     const r = await api('POST', '/api/auth/login', { login: fd.get('login'), password: fd.get('password') });
     state.me = r.user;
     await syncPushSubscription();
-    location.hash = '#/';
+    location.hash = (await needsSetup()) ? '#/bienvenue' : '#/';
   },
   async register(form, fd) {
     const r = await api('POST', '/api/auth/register', {
@@ -822,7 +825,7 @@ const forms = {
     });
     state.me = r.user;
     state.hasUsers = true;
-    location.hash = '#/';
+    location.hash = '#/bienvenue';
   },
   async guest(form, fd) {
     const g = { name: fd.get('name'), level: Number(fd.get('level') || 5) };
@@ -1153,7 +1156,8 @@ async function viewPlayer(id) {
 
 // ---------- Profil ----------
 const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
-const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent);
+const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
+const isMobile = () => isIOS() || /android|mobile/i.test(navigator.userAgent);
 const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 
 async function currentSubscription() {
@@ -1189,14 +1193,75 @@ async function syncPushSubscription() {
   if (sub) await api('POST', '/api/push/subscribe', sub.toJSON()).catch(() => {});
 }
 
-async function pushNudgeHtml() {
-  if (!pushSupported() || Notification.permission !== 'default' || storage.get('fdj-push-nudge')) return '';
-  if (await currentSubscription()) return '';
+/** Où en est cet appareil : app installée ? rappels activés ? */
+async function setupState() {
+  const standalone = isStandalone();
+  const mobile = isMobile();
+  const sub = await currentSubscription().catch(() => null);
+  let push;
+  if (isIOS() && !standalone) push = 'needs-install'; // iOS : notifications uniquement depuis l'app installée
+  else if (!pushSupported()) push = 'unsupported';
+  else if (sub) push = 'on';
+  else push = Notification.permission === 'denied' ? 'denied' : 'off';
+  return { installed: standalone || !mobile, standalone, canPrompt: !!state.installPrompt, push, ios: isIOS() };
+}
+
+async function needsSetup() {
+  const s = await setupState();
+  return !s.installed || s.push === 'off' || s.push === 'needs-install';
+}
+
+async function setupNudgeHtml() {
+  if (storage.get('fdj-setup-later')) return '';
+  const s = await setupState();
+  if (s.installed && s.push !== 'off') return '';
+  const quick = s.installed && s.push === 'off';
   return `<section class="card push-nudge stack">
-    <div><p><strong>Active les rappels</strong></p>
+    <div><p><strong>${quick ? 'Active les rappels' : "Installe l'app et active les rappels"}</strong></p>
     <p class="small muted" style="margin-top:4px">Pour savoir quand les inscriptions ouvrent, quand une place se libère et dans quelle équipe tu joues.</p></div>
-    <div class="btn-row"><button class="btn btn-small btn-dark" data-action="push-enable">Activer</button><button class="btn btn-small" data-action="push-later">Plus tard</button></div>
+    <div class="btn-row">${
+      quick ? '<button class="btn btn-small btn-dark" data-action="push-enable">Activer</button>' : '<a class="btn btn-small btn-dark" href="#/bienvenue">Configurer</a>'
+    }<button class="btn btn-small" data-action="setup-later">Plus tard</button></div>
   </section>`;
+}
+
+const SHARE_ICON =
+  '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" aria-label="Partager" role="img"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M6 11H5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-1"/></svg>';
+const STEP_CHECK = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+
+async function viewWelcome() {
+  const s = await setupState();
+  let install;
+  if (s.installed) install = `<p class="muted">${s.standalone ? "C'est fait : tu utilises l'app installée." : 'Sur ordinateur, rien à installer.'}</p>`;
+  else if (s.canPrompt)
+    install = `<p class="muted">Le Five arrive sur ton écran d'accueil, comme une vraie appli.</p><button class="btn btn-dark btn-block" data-action="install">Installer l'app</button>`;
+  else if (s.ios)
+    install = `<ol class="howto">
+      <li>Touche ${SHARE_ICON} <strong>Partager</strong> dans la barre de Safari.</li>
+      <li>Choisis <strong>Sur l'écran d'accueil</strong>, puis <strong>Ajouter</strong>.</li>
+      <li>Ouvre le Five depuis la nouvelle icône (reconnecte-toi si on te le demande).</li>
+    </ol>`;
+  else install = `<p class="muted">Dans le menu du navigateur (⋮), choisis <strong>Installer l'application</strong> ou <strong>Ajouter à l'écran d'accueil</strong>.</p>`;
+
+  const pushBody = {
+    on: `<p class="muted">Rappels activés sur cet appareil.</p><button class="btn btn-small" data-action="push-test">M'envoyer un test</button>`,
+    off: `<p class="muted">Ouverture des inscriptions, place qui se libère, équipes, rappel le jour J.</p><button class="btn btn-dark btn-block" data-action="push-enable">Activer les rappels</button>`,
+    'needs-install': `<p class="muted">Sur iPhone, les rappels s'activent depuis l'app installée : fais l'étape 1, ouvre le Five depuis l'icône, puis reviens ici.</p>`,
+    denied: `<p class="muted">Les notifications sont bloquées pour le Five. Réautorise-les dans les réglages du téléphone ou du navigateur, puis reviens ici.</p>`,
+    unsupported: `<p class="muted">Ce navigateur ne gère pas les notifications. Utilise Chrome sur Android ou Safari sur iPhone.</p>`,
+  }[s.push];
+  const step = (n, done, title, body) => `<section class="card step${done ? ' is-done' : ''}">
+    <span class="step-num" aria-hidden="true">${done ? STEP_CHECK : n}</span>
+    <div class="step-body"><h2>${title}</h2>${body}</div>
+  </section>`;
+  const allDone = s.installed && (s.push === 'on' || s.push === 'unsupported' || s.push === 'denied');
+  view.innerHTML = `
+    <div style="padding-top:12px"><h1>Bienvenue ${esc(state.me.name.split(' ')[0])}</h1>
+    <p class="muted" style="margin-top:10px;font-size:16px">Deux réglages et tu ne rates plus un jeudi.</p></div>
+    ${step(1, s.installed, "Installe l'app", install)}
+    ${step(2, s.push === 'on', 'Active les rappels', pushBody)}
+    <a class="btn btn-dark btn-block" href="#/">${allDone ? "C'est parti" : 'Continuer'}</a>
+    ${allDone ? '' : '<button class="link" data-action="setup-later" style="align-self:center">Plus tard</button>'}`;
 }
 
 async function notificationsCardHtml() {
@@ -1219,7 +1284,7 @@ async function notificationsCardHtml() {
     ? `<div class="divider"></div><label class="switch"><span>Recevoir aussi les rappels par email${state.me.email ? '' : ' <span class="small muted">(ajoute ton email ci-dessous)</span>'}</span>
         <input type="checkbox" data-pref="notifyEmail" ${state.me.notifyEmail ? 'checked' : ''} ${state.me.email ? '' : 'disabled'}></label>`
     : '';
-  return `<section class="card stack"><h2>Notifications</h2>${body}${email}</section>`;
+  return `<section class="card stack"><h2>Notifications</h2>${body}${email}<a class="link" href="#/bienvenue">Guide d'installation</a></section>`;
 }
 
 async function viewProfile() {
@@ -1379,6 +1444,11 @@ async function loadMe() {
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
   state.installPrompt = e;
+  if (current.path === '/bienvenue') render();
+});
+window.addEventListener('appinstalled', () => {
+  state.installPrompt = null;
+  if (current.path === '/bienvenue') render();
 });
 
 window.addEventListener('hashchange', () => {

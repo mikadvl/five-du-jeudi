@@ -1,5 +1,5 @@
 // Service worker : app installable, coquille hors ligne, notifications push.
-const CACHE = 'five-v2';
+const CACHE = 'five-v3';
 const SHELL = [
   '/',
   '/css/app.css',
@@ -35,18 +35,34 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(fetch(req).catch(() => caches.match('/')));
     return;
   }
-  // Fichiers statiques : cache immédiat + mise à jour en arrière-plan
-  event.respondWith(
-    caches.open(CACHE).then(async (cache) => {
-      const cached = await cache.match(req);
-      const network = fetch(req)
+  // Code de l'app (js, css, manifest) : réseau d'abord, pour que les mises à jour arrivent tout de suite
+  if (/\.(js|css|webmanifest)$/.test(url.pathname)) {
+    event.respondWith(
+      fetch(req)
         .then((res) => {
-          if (res.ok) cache.put(req, res.clone());
+          if (res.ok) {
+            const copy = res.clone();
+            caches.open(CACHE).then((c) => c.put(req, copy));
+          }
           return res;
         })
-        .catch(() => cached);
-      return cached || network;
-    }),
+        .catch(() => caches.match(req)),
+    );
+    return;
+  }
+  // Polices et icônes : cache d'abord (elles ne changent pas)
+  event.respondWith(
+    caches.match(req).then(
+      (cached) =>
+        cached ||
+        fetch(req).then((res) => {
+          if (res.ok) {
+            const copy = res.clone();
+            caches.open(CACHE).then((c) => c.put(req, copy));
+          }
+          return res;
+        }),
+    ),
   );
 });
 

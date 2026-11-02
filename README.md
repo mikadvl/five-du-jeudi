@@ -56,7 +56,7 @@ Le conteneur tourne avec l'utilisateur 1000 (`node`), d'où le `chown`. Le chemi
 
 ### 3. Lancer l'app
 
-**Apps > Discover Apps > ⋮ > Install via YAML**, nom `five-du-jeudi`, colle le contenu de `docker-compose.yml` en remplaçant :
+**Apps > Discover Apps > ⋮ > Install via YAML**, nom `five` (minuscules uniquement), colle le contenu de `docker-compose.yml` en remplaçant :
 
 - `VAPID_SUBJECT` par `mailto:` + ton adresse mail ;
 - `INVITE_CODE` par le code que tu veux donner aux potes.
@@ -99,7 +99,7 @@ La base est migrée automatiquement au démarrage, les données sont conservées
 - **Command** :
 
   ```sh
-  img=ghcr.io/mikadvl/five-du-jeudi:latest; old=$(docker image inspect -f '{{.Id}}' $img 2>/dev/null); docker pull -q $img >/dev/null || exit 1; new=$(docker image inspect -f '{{.Id}}' $img); if [ "$old" != "$new" ]; then midclt call -job app.redeploy five-du-jeudi; else echo "Five du jeudi deja a jour"; fi
+  img=ghcr.io/mikadvl/five-du-jeudi:latest; old=$(docker image inspect -f '{{.Id}}' $img 2>/dev/null); docker pull -q $img >/dev/null || exit 1; new=$(docker image inspect -f '{{.Id}}' $img); if [ "$old" != "$new" ]; then midclt call -job app.redeploy five; else echo "Five du jeudi deja a jour"; fi
   ```
 
 - **Run As User** : root
