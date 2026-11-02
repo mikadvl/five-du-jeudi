@@ -772,6 +772,7 @@ const actions = {
         <label class="switch"><span>Compte actif</span><input type="checkbox" name="active" ${u.active ? 'checked' : ''}></label>
         <div class="actions"><button type="button" class="btn" data-close>Annuler</button><button class="btn btn-dark" type="submit">Enregistrer</button></div>
         <button type="button" class="link" data-action="reset-password" data-id="${u.id}" data-name="${esc(u.name)}">Générer un nouveau mot de passe</button>
+        <button type="button" class="link link-danger" data-action="delete-user" data-id="${u.id}" data-name="${esc(u.name)}">Supprimer le compte</button>
       </form>`);
   },
   async 'reset-password'(el) {
@@ -782,6 +783,18 @@ const actions = {
       <p class="muted">Transmets-le à ${esc(el.dataset.name)}, qui pourra le changer depuis son profil.</p>
       <p class="num" style="font-size:34px;margin:16px 0;user-select:all">${esc(r.password)}</p>
       <div class="actions"><button class="btn" data-close>Fermer</button></div>`);
+  },
+  async 'delete-user'(el) {
+    const ok = await confirmSheet({
+      title: `Supprimer ${el.dataset.name} ?`,
+      text: 'Tout est effacé : compte, inscriptions, +1, buts, votes et historique. Les classements sont recalculés. C\'est définitif.',
+      confirm: 'Supprimer définitivement',
+      danger: true,
+    });
+    if (!ok) return;
+    await api('DELETE', `/api/admin/users/${el.dataset.id}`);
+    toast(`${el.dataset.name} supprimé`);
+    render();
   },
   async logout() {
     await disablePush().catch(() => {});

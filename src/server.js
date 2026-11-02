@@ -376,6 +376,11 @@ export function createApp({ db, service, notifier, trustProxy = true }) {
     res.json({ ok: true });
   });
 
+  app.delete('/api/admin/users/:id', requireAdmin, (req, res) => {
+    service.deleteUser(req.params.id, req.user);
+    res.json({ ok: true });
+  });
+
   app.post('/api/admin/users/:id/reset-password', requireAdmin, (req, res) => {
     const u = db.prepare('SELECT id FROM users WHERE id = ?').get(Number(req.params.id));
     if (!u) throw new HttpError(404, 'Joueur introuvable');

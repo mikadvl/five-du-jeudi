@@ -214,6 +214,31 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
     return { cancelled: count, promoted: promoted.length };
   }
 
+  /** Supprime un compte et tout ce qui s'y rattache (inscriptions, +1, buts, votes, historique). */
+  function deleteUser(userId, actor) {
+    const u = db.prepare('SELECT * FROM users WHERE id = ?').get(Number(userId));
+    if (!u) throw new HttpError(404, 'Joueur introuvable');
+    if (u.id === actor.id) throw bad('Tu ne peux pas supprimer ton propre compte');
+    if (u.role === 'admin') {
+      const others = db.prepare("SELECT COUNT(*) AS n FROM users WHERE role = 'admin' AND active = 1 AND id <> ?").get(u.id).n;
+      if (others === 0) throw bad('Il faut garder au moins un organisateur');
+    }
+    const promoted = tx(db, () => {
+      const matchIds = db.prepare('SELECT DISTINCT match_id FROM entries WHERE user_id = ?').all(u.id).map((r) => r.match_id);
+      db.prepare('DELETE FROM mvp_votes WHERE voter_id = ?').run(u.id);
+      db.prepare('DELETE FROM entries WHERE user_id = ?').run(u.id); // votes reçus supprimés en cascade
+      db.prepare('DELETE FROM users WHERE id = ?').run(u.id); // sessions, appareils, historique Elo en cascade
+      const out = [];
+      for (const id of matchIds) {
+        const m = getMatch(id);
+        if (m && !m.cancelled && !isPlayed(m)) out.push([m, normalize(m)]); // la liste d'attente remonte
+      }
+      recomputeRatings();
+      return out;
+    });
+    for (const [m, list] of promoted) notifyPromoted(m, list);
+  }
+
   // ---------- Matchs ----------
   function createMatch({ startsAt, location, capacity, notes }) {
     const s = settings();
@@ -881,6 +906,7 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
     join,
     addGuest,
     addPlayer,
+    deleteUser,
     cancelEntry,
     createMatch,
     updateMatch,

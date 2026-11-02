@@ -261,3 +261,31 @@ test('lieu planifié à l’avance et jeudi sans five', () => {
   assert.ok(!svc.listMatches(null).upcoming.some((m) => m.startsAt.startsWith('2026-11-19')));
   assert.equal(svc.plannedSlots(2)[0].skipped, true);
 });
+
+test('suppression d’un compte : tout part, la liste d’attente remonte, Elo recalculé', async () => {
+  const { svc, addUser, db, clock, flush, sent } = setup();
+  const admin = addUser('Orga', 5, 'admin');
+  const m = matchIn(svc);
+  const ps = Array.from({ length: 13 }, (_, i) => addUser(`D${i}`));
+  ps.forEach((p, i) => svc.join(m.id, p, i === 0 ? [{ name: 'Invité' }] : []));
+  const old = matchIn(svc, '2026-11-12T20:00');
+  ps.slice(0, 12).forEach((p) => svc.join(old.id, p));
+  svc.generateTeams(old.id);
+  clock.now = new Date('2026-11-12T21:30:00Z');
+  svc.saveResult(old.id, { scoreA: 5, scoreB: 3 });
+  clock.now = new Date('2026-11-02T09:00:00Z');
+  assert.throws(() => svc.deleteUser(admin.id, admin), /propre compte/);
+
+  await flush();
+  sent.length = 0;
+  svc.deleteUser(ps[0].id, admin);
+  await flush();
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM users WHERE id = ?').get(ps[0].id).n, 0);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM entries WHERE user_id = ?').get(ps[0].id).n, 0);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM rating_history WHERE user_id = ?').get(ps[0].id).n, 0);
+  const dto = svc.serializeMatch(svc.getMatch(m.id), admin);
+  assert.equal(dto.confirmed.length, 12); // lui + son invité partis, 2 remontés
+  assert.equal(dto.waitlist.length, 0);
+  assert.ok(sent.some((n) => n.title === 'Tu passes titulaire !'));
+  assert.ok(!svc.stats('all').players.some((p) => p.userId === ps[0].id));
+});
