@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openDb, getSettings, setSettings, tx } from './db.js';
-import { createService, HttpError } from './service.js';
+import { createService, HttpError, canManage } from './service.js';
 import { createNotifier } from './notify.js';
 import { levelRating } from './teams.js';
 import {
@@ -123,6 +123,9 @@ export function createApp({ db, service, notifier, trustProxy = true }) {
   const requireUser = (req, res, next) => (req.user ? next() : next(new HttpError(401, 'Connecte-toi')));
   const requireAdmin = (req, res, next) =>
     req.user?.role === 'admin' ? next() : next(new HttpError(req.user ? 403 : 401, 'Réservé aux organisateurs'));
+  // Organisateurs et capitaines : gestion des matchs (pas des réglages ni des comptes)
+  const requireManager = (req, res, next) =>
+    canManage(req.user) ? next() : next(new HttpError(req.user ? 403 : 401, 'Réservé aux capitaines et organisateurs'));
 
   const setSessionCookie = (req, res, userId) => {
     const { token, maxAge } = createSession(db, userId);
@@ -252,7 +255,7 @@ export function createApp({ db, service, notifier, trustProxy = true }) {
       teamNames: { A: getSettings(db).team_a_name, B: getSettings(db).team_b_name },
     });
   });
-  app.put('/api/planned/:slot', requireAdmin, (req, res) => {
+  app.put('/api/planned/:slot', requireManager, (req, res) => {
     res.json(service.planSlot(String(req.params.slot), { location: req.body?.location, skipped: !!req.body?.skipped }));
   });
   app.get('/api/matches', requireUser, (req, res) => res.json(service.listMatches(req.user)));
@@ -278,47 +281,47 @@ export function createApp({ db, service, notifier, trustProxy = true }) {
   });
 
   // Admin – matchs
-  app.post('/api/matches', requireAdmin, (req, res) => {
+  app.post('/api/matches', requireManager, (req, res) => {
     const m = service.createMatch(req.body || {});
     res.status(201).json(service.serializeMatch(m, req.user));
   });
-  app.get('/api/matches/:id/edit', requireAdmin, (req, res) => {
+  app.get('/api/matches/:id/edit', requireManager, (req, res) => {
     const m = service.requireMatch(req.params.id);
     res.json({ startsAt: toLocalInput(new Date(m.starts_at), getSettings(db).timezone), location: m.location, capacity: m.capacity, notes: m.notes });
   });
-  app.put('/api/matches/:id', requireAdmin, (req, res) => {
+  app.put('/api/matches/:id', requireManager, (req, res) => {
     service.updateMatch(req.params.id, req.body || {});
     res.json(matchDto(req, req.params.id));
   });
-  app.post('/api/matches/:id/cancel', requireAdmin, (req, res) => {
+  app.post('/api/matches/:id/cancel', requireManager, (req, res) => {
     service.cancelMatch(req.params.id, req.body?.reason);
     res.json(matchDto(req, req.params.id));
   });
-  app.post('/api/matches/:id/restore', requireAdmin, (req, res) => {
+  app.post('/api/matches/:id/restore', requireManager, (req, res) => {
     service.restoreMatch(req.params.id);
     res.json(matchDto(req, req.params.id));
   });
-  app.post('/api/matches/:id/players', requireAdmin, (req, res) => {
+  app.post('/api/matches/:id/players', requireManager, (req, res) => {
     service.addPlayer(req.params.id, req.user, req.body?.userId);
     res.json(matchDto(req, req.params.id));
   });
-  app.post('/api/matches/:id/teams', requireAdmin, (req, res) => {
+  app.post('/api/matches/:id/teams', requireManager, (req, res) => {
     service.generateTeams(req.params.id);
     res.json(matchDto(req, req.params.id));
   });
-  app.put('/api/matches/:id/teams', requireAdmin, (req, res) => {
+  app.put('/api/matches/:id/teams', requireManager, (req, res) => {
     service.setTeams(req.params.id, req.body?.assignments || {});
     res.json(matchDto(req, req.params.id));
   });
-  app.delete('/api/matches/:id/teams', requireAdmin, (req, res) => {
+  app.delete('/api/matches/:id/teams', requireManager, (req, res) => {
     service.clearTeams(req.params.id);
     res.json(matchDto(req, req.params.id));
   });
-  app.put('/api/matches/:id/result', requireAdmin, (req, res) => {
+  app.put('/api/matches/:id/result', requireManager, (req, res) => {
     service.saveResult(req.params.id, req.body || {});
     res.json(matchDto(req, req.params.id));
   });
-  app.delete('/api/matches/:id/result', requireAdmin, (req, res) => {
+  app.delete('/api/matches/:id/result', requireManager, (req, res) => {
     service.clearResult(req.params.id);
     res.json(matchDto(req, req.params.id));
   });
@@ -361,7 +364,7 @@ export function createApp({ db, service, notifier, trustProxy = true }) {
     if (!u) throw new HttpError(404, 'Joueur introuvable');
     const b = req.body || {};
     const level = b.level !== undefined ? intRange(b.level, 1, 10, 'Niveau') : u.level;
-    const role = b.role !== undefined ? (b.role === 'admin' ? 'admin' : 'player') : u.role;
+    const role = b.role !== undefined ? (['admin', 'captain'].includes(b.role) ? b.role : 'player') : u.role;
     const active = b.active !== undefined ? (b.active ? 1 : 0) : u.active;
     if ((role !== 'admin' || !active) && u.role === 'admin') {
       const admins = db.prepare("SELECT COUNT(*) AS n FROM users WHERE role = 'admin' AND active = 1 AND id <> ?").get(u.id).n;

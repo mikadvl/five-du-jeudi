@@ -10,6 +10,8 @@ export class HttpError extends Error {
   }
 }
 const bad = (msg) => new HttpError(400, msg);
+/** Organisateur ou capitaine : peut gérer les matchs. */
+export const canManage = (user) => user?.role === 'admin' || user?.role === 'captain';
 const conflict = (msg) => new HttpError(409, msg);
 const H = 3600e3;
 
@@ -80,7 +82,7 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
   function assertJoinable(m, user) {
     if (m.cancelled) throw conflict('Ce match est annulé');
     if (isPlayed(m)) throw conflict('Ce match est déjà joué');
-    if (isStarted(m) && user.role !== 'admin') throw conflict('Le match a déjà commencé');
+    if (isStarted(m) && !canManage(user)) throw conflict('Le match a déjà commencé');
   }
 
   function cleanGuest(g) {
@@ -158,7 +160,7 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
       const host = db
         .prepare("SELECT id FROM entries WHERE match_id = ? AND user_id = ? AND guest_name IS NULL AND state = 'active'")
         .get(m.id, user.id);
-      if (!host && user.role !== 'admin') throw conflict("Inscris-toi d'abord pour ajouter un +1");
+      if (!host && !canManage(user)) throw conflict("Inscris-toi d'abord pour ajouter un +1");
       const n = db
         .prepare("SELECT COUNT(*) AS n FROM entries WHERE match_id = ? AND user_id = ? AND guest_name IS NOT NULL AND state = 'active'")
         .get(m.id, user.id).n;
@@ -184,10 +186,10 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
   function cancelEntry(entryId, actor) {
     const e = db.prepare('SELECT * FROM entries WHERE id = ?').get(Number(entryId));
     if (!e || e.state !== 'active') throw new HttpError(404, 'Inscription introuvable');
-    if (actor.role !== 'admin' && e.user_id !== actor.id) throw new HttpError(403, "Tu ne peux pas désinscrire quelqu'un d'autre");
+    if (!canManage(actor) && e.user_id !== actor.id) throw new HttpError(403, "Tu ne peux pas désinscrire quelqu'un d'autre");
     const m = requireMatch(e.match_id);
     if (isPlayed(m)) throw conflict('Le match est déjà joué');
-    if (isStarted(m) && actor.role !== 'admin') throw conflict('Le match a déjà commencé');
+    if (isStarted(m) && !canManage(actor)) throw conflict('Le match a déjà commencé');
 
     const late = new Date(m.starts_at) - clock() < 24 * H;
     const { promoted, count } = tx(db, () => {
@@ -552,7 +554,7 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
   // ---------- Sérialisation ----------
   function serializeMatch(m, viewer) {
     const s = settings();
-    const isAdmin = viewer?.role === 'admin';
+    const isAdmin = canManage(viewer);
     const entries = activeEntries(m.id);
     const dto = (e) => ({
       id: e.id,
@@ -740,7 +742,7 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
   function playerProfile(userId, viewer) {
     const u = db.prepare('SELECT id, name, level, elo, games, role, created_at FROM users WHERE id = ?').get(Number(userId));
     if (!u) throw new HttpError(404, 'Joueur introuvable');
-    const canSeeRating = viewer && (viewer.id === u.id || viewer.role === 'admin');
+    const canSeeRating = viewer && (viewer.id === u.id || canManage(viewer));
     const hist = new Map(
       db.prepare('SELECT match_id, rating_after FROM rating_history WHERE user_id = ?').all(u.id).map((r) => [r.match_id, r.rating_after]),
     );

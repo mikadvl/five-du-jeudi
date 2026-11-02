@@ -90,3 +90,25 @@ test('parcours API : inscription, droits, match, +1, désistement', async () => 
     server.close();
   }
 });
+
+test('rôle capitaine : gère les matchs, pas les réglages ni les comptes', async () => {
+  const { server, client, code } = await boot();
+  try {
+    const orga = client();
+    const cap = client();
+    await orga('POST', '/api/auth/register', { name: 'Orga', password: 'secret1', inviteCode: code });
+    const r = await cap('POST', '/api/auth/register', { name: 'Capi', password: 'secret1', inviteCode: code });
+    assert.equal((await cap('POST', '/api/matches', { startsAt: '2030-01-10T20:00' })).status, 403);
+
+    assert.equal((await orga('PUT', `/api/admin/users/${r.body.user.id}`, { role: 'captain' })).status, 200);
+    const m = await cap('POST', '/api/matches', { startsAt: '2030-01-10T20:00', location: 'Five', capacity: 10 });
+    assert.equal(m.status, 201);
+    assert.equal(m.body.canManage, true);
+    assert.equal((await cap('PUT', `/api/matches/${m.body.id}`, { location: 'UrbanSoccer Montaudran' })).body.location, 'UrbanSoccer Montaudran');
+
+    assert.equal((await cap('GET', '/api/admin/settings')).status, 403);
+    assert.equal((await cap('PUT', `/api/admin/users/${r.body.user.id}`, { role: 'admin' })).status, 403);
+  } finally {
+    server.close();
+  }
+});

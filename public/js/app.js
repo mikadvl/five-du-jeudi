@@ -128,6 +128,8 @@ const ICON = {
 };
 
 const isAdmin = () => state.me?.role === 'admin';
+const canManage = () => ['admin', 'captain'].includes(state.me?.role);
+const ROLES = { player: 'Joueur', captain: 'Capitaine', admin: 'Organisateur' };
 const backLink = (href, label) => `<header class="topbar"><a class="back" href="${href}">${ICON.back}${label}</a></header>`;
 const homeTopbar = () => `<header class="topbar"><span class="group">${esc(state.group.name)}</span>
   <a class="av av-b av-sm" href="#/profil" aria-label="Mon profil">${esc(initials(state.me.name))}</a></header>`;
@@ -206,7 +208,7 @@ async function homeHtml(data) {
     html += `<div class="card empty">
       <h2>Pas de match prévu</h2>
       <p>Le prochain jeudi s'ouvre ici automatiquement. Le calendrier montre les dates et lieux à venir.</p>
-      <div class="btn-row" style="margin-top:16px"><a class="btn" href="#/matchs">Voir le calendrier</a>${isAdmin() ? '<button class="btn btn-dark" data-action="create-match">Créer un match</button>' : ''}</div>
+      <div class="btn-row" style="margin-top:16px"><a class="btn" href="#/matchs">Voir le calendrier</a>${canManage() ? '<button class="btn btn-dark" data-action="create-match">Créer un match</button>' : ''}</div>
     </div>`;
   } else {
     html += matchHtml(data.next);
@@ -760,7 +762,13 @@ const actions = {
             .join('')}</select>
           <small>Point de départ de l'équilibrage. Les résultats prennent le relais au fil des matchs (indice actuel : ${u.elo}, ${plural(u.games, 'match', 'matchs')}).</small>
         </label>
-        <label class="switch"><span>Organisateur</span><input type="checkbox" name="admin" ${u.role === 'admin' ? 'checked' : ''}></label>
+        <fieldset class="field">
+          <legend>Rôle</legend>
+          <div class="levels" style="grid-template-columns:repeat(3,minmax(0,1fr))">${Object.entries(ROLES)
+            .map(([v, l]) => `<label class="choice"><input type="radio" name="role" value="${v}" ${u.role === v ? 'checked' : ''}><span>${l}</span></label>`)
+            .join('')}</div>
+          <small>Capitaine : gère les matchs (équipes, score, lieu, inscrits, annulation). Organisateur : en plus, les réglages du groupe et les comptes.</small>
+        </fieldset>
         <label class="switch"><span>Compte actif</span><input type="checkbox" name="active" ${u.active ? 'checked' : ''}></label>
         <div class="actions"><button type="button" class="btn" data-close>Annuler</button><button class="btn btn-dark" type="submit">Enregistrer</button></div>
         <button type="button" class="link" data-action="reset-password" data-id="${u.id}" data-name="${esc(u.name)}">Générer un nouveau mot de passe</button>
@@ -911,7 +919,7 @@ const forms = {
   async user(form, fd) {
     await api('PUT', `/api/admin/users/${form.dataset.id}`, {
       level: Number(fd.get('level')),
-      role: form.querySelector('[name=admin]').checked ? 'admin' : 'player',
+      role: fd.get('role') || 'player',
       active: form.querySelector('[name=active]').checked,
     });
     closeSheet();
@@ -987,7 +995,7 @@ async function viewMatches() {
     const inner = `${datebox(p.startsAt, true)}
       <span class="grow"><span class="title">${esc(weekday(p.startsAt))} à ${esc(hour(p.startsAt))}</span>${sub}</span>
       ${p.skipped ? '<span class="chip">Off</span>' : ''}`;
-    return isAdmin()
+    return canManage()
       ? `<li><button class="row" data-action="plan-slot" data-slot="${esc(p.slot)}" aria-label="${esc(`Planifier le ${dayLong(p.startsAt)}`)}">${inner}${ICON.chevron}</button></li>`
       : `<li><span class="row static">${inner}</span></li>`;
   };
@@ -1012,14 +1020,14 @@ async function viewMatches() {
   };
 
   view.innerHTML = `
-    <div class="section-head" style="padding-top:12px"><h1>Calendrier</h1>${isAdmin() ? '<button class="btn btn-small btn-dark" data-action="create-match">Nouveau match</button>' : ''}</div>
+    <div class="section-head" style="padding-top:12px"><h1>Calendrier</h1>${canManage() ? '<button class="btn btn-small btn-dark" data-action="create-match">Nouveau match</button>' : ''}</div>
     <div class="section-head"><h2>À venir</h2></div>
     ${
       d.upcoming.length || d.planned.length
         ? `<ul class="list card card-tight">${d.upcoming.map(upcomingRow).join('')}${d.planned.map(plannedRow).join('')}</ul>`
         : '<p class="card empty">Rien de prévu pour le moment.</p>'
     }
-    ${isAdmin() && d.planned.length ? '<p class="small muted">Touche un jeudi pas encore ouvert pour changer son lieu ou le sauter.</p>' : ''}
+    ${canManage() && d.planned.length ? '<p class="small muted">Touche un jeudi pas encore ouvert pour changer son lieu ou le sauter.</p>' : ''}
     <div class="section-head"><h2>Résultats</h2></div>
     ${d.past.length ? `<ul class="list card card-tight">${d.past.map(pastRow).join('')}</ul>` : '<p class="card empty">Aucun match joué pour le moment.</p>'}`;
 }
@@ -1389,7 +1397,7 @@ async function viewAdmin() {
       .map(
         (u) => `<li><button class="row" data-action="manage-user" data-user="${esc(JSON.stringify(u))}">
         <span class="av av-sm" aria-hidden="true">${esc(initials(u.name))}</span>
-        <span class="grow"><span class="title">${esc(u.name)} ${u.role === 'admin' ? '<span class="chip chip-dark">orga</span>' : ''}${u.active ? '' : ' <span class="chip">inactif</span>'}</span>
+        <span class="grow"><span class="title">${esc(u.name)} ${u.role === 'admin' ? '<span class="chip chip-dark">orga</span>' : u.role === 'captain' ? '<span class="chip chip-open">capitaine</span>' : ''}${u.active ? '' : ' <span class="chip">inactif</span>'}</span>
         <span class="sub">Niveau ${u.level}, indice ${u.elo}, ${plural(u.games, 'match', 'matchs')}${u.devices ? `, ${plural(u.devices, 'appareil')} notifié${u.devices > 1 ? 's' : ''}` : ', pas de notifications'}</span></span>
         ${ICON.chevron}</button></li>`,
       )
