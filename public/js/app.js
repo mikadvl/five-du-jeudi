@@ -802,6 +802,10 @@ const actions = {
     toast(`${el.dataset.name} supprimé`);
     render();
   },
+  'set-theme'(el) {
+    applyTheme(el.dataset.theme);
+    render();
+  },
   async logout() {
     await disablePush().catch(() => {});
     await api('POST', '/api/auth/logout');
@@ -1324,6 +1328,17 @@ async function viewProfile() {
     <div class="player-head" style="padding-top:12px"><span class="av av-b av-lg" aria-hidden="true">${esc(initials(me.name))}</span><h1>${esc(me.name)}</h1></div>
     <div class="btn-row"><a class="btn" href="#/joueur/${me.id}">Mes stats</a>${me.role === 'admin' ? '<a class="btn btn-dark" href="#/admin">Organisation</a>' : ''}</div>
     ${await notificationsCardHtml()}${install}
+    <section class="card stack">
+      <h2>Apparence</h2>
+      <nav class="segmented" aria-label="Thème">${[
+        ['auto', 'Automatique'],
+        ['light', 'Clair'],
+        ['dark', 'Sombre'],
+      ]
+        .map(([v, l]) => `<a href="#" data-action="set-theme" data-theme="${v}" aria-current="${currentTheme() === v}">${l}</a>`)
+        .join('')}</nav>
+      <p class="small muted">Automatique suit le réglage du téléphone.</p>
+    </section>
     <section class="card">
       <h2>Mon compte</h2>
       <form data-form="profile" class="form-grid" style="margin-top:14px">
@@ -1341,6 +1356,18 @@ async function viewProfile() {
       </form>
     </section>
     <button class="btn btn-danger btn-block" data-action="logout">Me déconnecter</button>`;
+}
+
+// ---------- Thème ----------
+function currentTheme() {
+  return storage.get('fdj-theme') || 'auto';
+}
+function applyTheme(t) {
+  storage.set('fdj-theme', t);
+  if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+  else delete document.documentElement.dataset.theme;
+  const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+  document.querySelectorAll('meta[name=theme-color]').forEach((m) => m.setAttribute('content', bg));
 }
 
 // ---------- Organisation ----------
