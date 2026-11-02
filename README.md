@@ -99,7 +99,7 @@ La base est migrée automatiquement au démarrage, les données sont conservées
 - **Command** :
 
   ```sh
-  img=ghcr.io/mikadvl/five-du-jeudi:latest; old=$(docker image inspect -f '{{.Id}}' $img 2>/dev/null); docker pull -q $img >/dev/null || exit 1; new=$(docker image inspect -f '{{.Id}}' $img); if [ "$old" != "$new" ]; then midclt call -job app.redeploy five; else echo "Five du jeudi deja a jour"; fi
+  img=ghcr.io/mikadvl/five-du-jeudi:latest; old=$(docker image inspect -f '{{.Id}}' $img 2>/dev/null); docker pull -q $img >/dev/null || exit 1; new=$(docker image inspect -f '{{.Id}}' $img); if [ "$old" != "$new" ]; then midclt call -j app.redeploy five; else echo "Five du jeudi deja a jour"; fi
   ```
 
 - **Run As User** : root
