@@ -83,7 +83,7 @@ export async function createNotifier(db, { subject = 'mailto:admin@example.com',
         users.map(async (u) => {
           push += await pushTo(u.id, payload);
           try {
-            email += await mailTo(u, payload);
+            if (!payload.pushOnly) email += await mailTo(u, payload);
           } catch (err) {
             log.warn?.(`[mail] échec pour l'utilisateur ${u.id}: ${err.message}`);
           }

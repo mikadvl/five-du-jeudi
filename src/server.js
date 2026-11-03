@@ -62,6 +62,7 @@ const EDITABLE_SETTINGS = {
   remind_unregistered_hours: (v) => intRange(v, 0, 168, 'Relance des non-inscrits'),
   remind_confirmed_hours: (v) => intRange(v, 0, 72, 'Rappel aux joueurs'),
   remind_open: (v) => (v === true || v === '1' || v === 1 ? 1 : 0),
+  notify_staff_signups: (v) => (v === true || v === '1' || v === 1 ? 1 : 0),
   team_a_name: (v) => str(v, 1, 20, 'Nom équipe A'),
   team_b_name: (v) => str(v, 1, 20, 'Nom équipe B'),
   mvp_vote_hours: (v) => intRange(v, 1, 168, 'Durée du vote'),

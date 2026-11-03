@@ -141,7 +141,7 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
     assertJoinable(m, user);
     if (!Array.isArray(guests) || guests.length > 4) throw bad('4 invités maximum');
     const cleaned = guests.map(cleanGuest);
-    return tx(db, () => {
+    const res = tx(db, () => {
       const exists = db
         .prepare("SELECT id FROM entries WHERE match_id = ? AND user_id = ? AND guest_name IS NULL AND state = 'active'")
         .get(m.id, user.id);
@@ -150,13 +150,36 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
       const g = cleaned.map((x) => insertEntry(m, user.id, x));
       return { entry: me, guests: g };
     });
+    const extra = cleaned.length ? ` avec ${cleaned.map((x) => x.name).join(', ')}` : '';
+    notifyStaffSignup(m, user, `${user.name} s'inscrit${extra}`, res.entry.spot === 'waitlist');
+    return res;
+  }
+
+  /** Prévient organisateurs et capitaines d'une inscription (notif push seulement, regroupée par match). */
+  function notifyStaffSignup(m, actor, what, waitlist) {
+    if (settings().notify_staff_signups !== '1') return;
+    const staff = db
+      .prepare("SELECT id FROM users WHERE active = 1 AND role IN ('admin', 'captain') AND id <> ?")
+      .all(actor.id)
+      .map((u) => u.id);
+    if (!staff.length) return;
+    const fresh = getMatch(m.id);
+    const n = confirmedCount(m.id);
+    const w = db.prepare("SELECT COUNT(*) AS n FROM entries WHERE match_id = ? AND state = 'active' AND spot = 'waitlist'").get(m.id).n;
+    fire(staff, {
+      title: `${what}${waitlist ? " (liste d'attente)" : ''}`,
+      body: `Match du ${dayLabel(fresh.starts_at)} : ${n}/${fresh.capacity}${w ? `, ${w} en attente` : ''}.`,
+      url: `/#/match/${m.id}`,
+      tag: `signups-${m.id}`,
+      pushOnly: true,
+    });
   }
 
   function addGuest(matchId, user, guest) {
     const m = requireMatch(matchId);
     assertJoinable(m, user);
     const g = cleanGuest(guest);
-    return tx(db, () => {
+    const res = tx(db, () => {
       const host = db
         .prepare("SELECT id FROM entries WHERE match_id = ? AND user_id = ? AND guest_name IS NULL AND state = 'active'")
         .get(m.id, user.id);
@@ -167,6 +190,8 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
       if (n >= 4) throw bad('4 invités maximum');
       return insertEntry(m, user.id, g);
     });
+    notifyStaffSignup(m, user, `${user.name} ajoute un +1 : ${g.name}`, res.spot === 'waitlist');
+    return res;
   }
 
   function addPlayer(matchId, admin, userId) {
