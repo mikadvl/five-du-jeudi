@@ -122,7 +122,7 @@ Les clés VAPID du Web Push sont générées au premier démarrage et stockées 
 
 ## Comment sont faites les équipes
 
-1. Chaque joueur a un **niveau** (1 à 10) réglé par un organisateur. Niveau 5 = 1000 points, chaque point de niveau vaut 60 points.
+1. Chaque joueur a un **niveau** (1 à 10). Il le déclare à l'inscription, puis ce sont **les autres joueurs qui le notent** (Profil → Noter les joueurs, notes anonymes) : dès 3 notes reçues, son niveau devient la moyenne arrondie de ces notes. Niveau 5 = 1000 points, chaque point de niveau vaut 60 points.
 2. Après chaque score saisi, un **Elo** est mis à jour : l'équipe qui gagne prend des points, d'autant plus si elle était donnée perdante et si l'écart est large.
 3. La **force** utilisée pour équilibrer mélange les deux : au début c'est le niveau qui compte, puis l'historique prend le relais (jusqu'à 70 % au bout de 10 matchs). Un +1 compte pour son niveau estimé.
 4. L'algo teste **toutes** les répartitions possibles (462 pour 12 joueurs) et garde celles où l'écart de force est minimal, en pénalisant les binômes qui ont déjà joué ensemble lors des 3 derniers matchs. Il tire au sort parmi les meilleures pour que les compos varient d'une semaine à l'autre.

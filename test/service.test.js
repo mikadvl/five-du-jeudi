@@ -334,3 +334,29 @@ test('orgas et capitaines prévenus des nouveaux comptes', async () => {
   await flush();
   assert.equal(sent.length, 0);
 });
+
+test('niveau = moyenne arrondie des notes des potes (dès 3 notes)', () => {
+  const { svc, addUser, db } = setup();
+  const target = addUser('Karim', 9); // se déclare très bon
+  db.prepare('UPDATE users SET base_level = level').run();
+  const raters = ['A', 'B', 'C', 'D'].map((n) => addUser(n));
+  const level = () => db.prepare('SELECT level FROM users WHERE id = ?').get(target.id).level;
+  assert.throws(() => svc.ratePlayer(target, target.id, 5), /toi-même/);
+  svc.ratePlayer(raters[0], target.id, 6);
+  svc.ratePlayer(raters[1], target.id, 7);
+  assert.equal(level(), 9); // 2 notes : niveau de départ conservé
+  svc.ratePlayer(raters[2], target.id, 6);
+  assert.equal(level(), 6); // (6+7+6)/3 = 6,33 -> 6
+  svc.ratePlayer(raters[3], target.id, 8);
+  assert.equal(level(), 7); // 6,75 -> 7
+  assert.equal(db.prepare('SELECT elo FROM users WHERE id = ?').get(target.id).elo, levelRating(7));
+  svc.ratePlayer(raters[3], target.id, null); // note retirée
+  assert.equal(level(), 6);
+  assert.equal(svc.unratedCount(raters[0]), 3);
+  const list = svc.ratingsFor(raters[0]);
+  assert.equal(list.players.find((p) => p.id === target.id).myRating, 6);
+  // suppression d'un votant : sa note disparaît, retour au niveau de départ
+  const orga = addUser('Orga', 5, 'admin');
+  svc.deleteUser(raters[0].id, orga);
+  assert.equal(level(), 9);
+});

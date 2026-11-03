@@ -1,5 +1,5 @@
 // Service worker : app installable, coquille hors ligne, notifications push.
-const CACHE = 'five-v4';
+const CACHE = 'five-v5';
 const SHELL = [
   '/',
   '/css/app.css',

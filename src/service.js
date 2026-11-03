@@ -14,6 +14,8 @@ const bad = (msg) => new HttpError(400, msg);
 export const canManage = (user) => user?.role === 'admin' || user?.role === 'captain';
 const conflict = (msg) => new HttpError(409, msg);
 const H = 3600e3;
+/** Nombre de notes reçues à partir duquel la moyenne des potes remplace le niveau de départ. */
+export const PEER_MIN = 3;
 
 const intIn = (v, min, max, fallback) => {
   const n = Number.parseInt(v, 10);
@@ -259,8 +261,71 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
       recomputeRatings();
       return out;
     });
+    refreshAllLevels(); // ses notes données ne comptent plus
     for (const [m, list] of promoted) notifyPromoted(m, list);
   }
+
+  // ---------- Niveau noté par les potes ----------
+  function peerSummary(userId) {
+    const r = db.prepare('SELECT COUNT(*) AS n, AVG(rating) AS avg FROM peer_ratings WHERE target_id = ?').get(userId);
+    return { count: r.n, avg: r.n ? Math.round(r.avg * 10) / 10 : null };
+  }
+
+  /** Niveau effectif = moyenne arrondie des notes reçues (dès PEER_MIN notes), sinon niveau de départ. */
+  function refreshLevel(userId) {
+    const u = db.prepare('SELECT id, level, base_level FROM users WHERE id = ?').get(userId);
+    if (!u) return false;
+    const p = peerSummary(u.id);
+    const next = p.count >= PEER_MIN ? Math.min(10, Math.max(1, Math.round(p.avg))) : (u.base_level ?? u.level);
+    if (next === u.level) return false;
+    db.prepare('UPDATE users SET level = ? WHERE id = ?').run(next, u.id);
+    return true;
+  }
+
+  function refreshAllLevels() {
+    let changed = false;
+    for (const { id } of db.prepare('SELECT id FROM users').all()) changed = refreshLevel(id) || changed;
+    if (changed) recomputeRatings();
+  }
+
+  function ratePlayer(rater, targetId, rating) {
+    const t = db.prepare('SELECT id FROM users WHERE id = ? AND active = 1').get(Number(targetId));
+    if (!t) throw new HttpError(404, 'Joueur introuvable');
+    if (t.id === rater.id) throw bad('Tu ne peux pas te noter toi-même');
+    tx(db, () => {
+      if (rating === null || rating === '' || rating === undefined) {
+        db.prepare('DELETE FROM peer_ratings WHERE rater_id = ? AND target_id = ?').run(rater.id, t.id);
+      } else {
+        const r = intIn(rating, 1, 10, NaN);
+        if (Number.isNaN(r)) throw bad('Note entre 1 et 10');
+        db.prepare(
+          `INSERT INTO peer_ratings (rater_id, target_id, rating) VALUES (?, ?, ?)
+           ON CONFLICT(rater_id, target_id) DO UPDATE SET rating = excluded.rating, updated_at = excluded.updated_at`,
+        ).run(rater.id, t.id, r);
+      }
+      if (refreshLevel(t.id)) recomputeRatings();
+    });
+  }
+
+  /** Joueurs à noter par `rater`, avec la note qu'il a déjà mise. */
+  function ratingsFor(rater) {
+    const rows = db
+      .prepare(
+        `SELECT u.id, u.name, u.created_at, pr.rating AS my_rating FROM users u
+         LEFT JOIN peer_ratings pr ON pr.target_id = u.id AND pr.rater_id = ?
+         WHERE u.active = 1 AND u.id <> ? ORDER BY u.name_key`,
+      )
+      .all(rater.id, rater.id);
+    return { min: PEER_MIN, players: rows.map((r) => ({ id: r.id, name: r.name, myRating: r.my_rating ?? null })) };
+  }
+
+  const unratedCount = (rater) =>
+    db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM users u WHERE u.active = 1 AND u.id <> ?
+         AND NOT EXISTS (SELECT 1 FROM peer_ratings pr WHERE pr.rater_id = ? AND pr.target_id = u.id)`,
+      )
+      .get(rater.id, rater.id).n;
 
   /** Nouveau compte créé : prévient organisateurs et capitaines. */
   function notifyNewAccount(user) {
@@ -879,7 +944,7 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
       bestDuo: duo,
       history: history.reverse(),
       ...(canSeeRating
-        ? { level: u.level, strength: Math.round(blendedStrength(u)), ratingStart: levelRating(u.level) }
+        ? { level: u.level, peer: peerSummary(u.id), peerMin: PEER_MIN, strength: Math.round(blendedStrength(u)), ratingStart: levelRating(u.level) }
         : {}),
       teamNames: { A: settings().team_a_name, B: settings().team_b_name },
     };
@@ -963,6 +1028,12 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
     deleteUser,
     notifyRole,
     notifyNewAccount,
+    ratePlayer,
+    ratingsFor,
+    unratedCount,
+    peerSummary,
+    refreshLevel,
+    refreshAllLevels,
     cancelEntry,
     createMatch,
     updateMatch,

@@ -105,6 +105,19 @@ const MIGRATIONS = [
     skipped INTEGER NOT NULL DEFAULT 0
   );
   `,
+  // v3 : niveau noté par les autres joueurs (moyenne arrondie)
+  `
+  ALTER TABLE users ADD COLUMN base_level INTEGER;
+  UPDATE users SET base_level = level;
+  CREATE TABLE peer_ratings (
+    rater_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    target_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 10),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    PRIMARY KEY (rater_id, target_id)
+  );
+  CREATE INDEX ix_peer_target ON peer_ratings(target_id);
+  `,
 ];
 
 export const DEFAULT_SETTINGS = {

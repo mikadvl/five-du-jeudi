@@ -146,6 +146,7 @@ const routes = [
   [/^\/connexion$/, viewLogin, null],
   [/^\/inscription$/, viewRegister, null],
   [/^\/bienvenue$/, viewWelcome, 'home'],
+  [/^\/noter$/, viewRate, 'profil'],
 ];
 
 async function render() {
@@ -200,6 +201,7 @@ async function viewHome() {
 async function homeHtml(data) {
   let html = homeTopbar();
   html += await setupNudgeHtml();
+  html += rateNudgeHtml(data.toRate);
   if (data.pendingVote) {
     html += `<a class="banner" href="#/match/${data.pendingVote.matchId}">
       <span>Vote pour l'homme du match du ${esc(fmt(data.pendingVote.startsAt, { weekday: 'long', day: 'numeric' }))}</span>${ICON.chevron.replace('class="chev"', '')}</a>`;
@@ -475,6 +477,53 @@ function adminToolsHtml(m) {
 }
 
 // ---------- Feuilles d'action ----------
+const PEER_MIN = 3;
+const RATING_LABELS = { 1: 'débutant', 3: 'en progrès', 5: 'niveau moyen du groupe', 7: 'bon', 9: 'très bon', 10: 'le crack' };
+
+function rateNudgeHtml(n) {
+  if (!n) return '';
+  let seen = 0;
+  try {
+    seen = Number(localStorage.getItem('fdj-rate-later') || 0);
+  } catch {
+    /* stockage indisponible */
+  }
+  if (n <= seen) return '';
+  return `<section class="card rate-nudge stack">
+    <div><p><strong>${n > 1 ? `${n} joueurs à noter` : '1 joueur à noter'}</strong></p>
+    <p class="small muted" style="margin-top:4px">Le niveau de chacun est la moyenne des notes des potes : c'est ce qui équilibre les équipes. Les notes sont anonymes.</p></div>
+    <div class="btn-row"><a class="btn btn-small btn-dark" href="#/noter">Noter</a><button class="btn btn-small" data-action="rate-later" data-n="${n}">Plus tard</button></div>
+  </section>`;
+}
+
+async function viewRate() {
+  const d = await api('GET', '/api/ratings');
+  const opts = (v) =>
+    `<option value="" ${v === null ? 'selected' : ''}>Pas noté</option>` +
+    Array.from({ length: 10 }, (_, i) => i + 1)
+      .map((n) => `<option value="${n}" ${n === v ? 'selected' : ''}>${n}${RATING_LABELS[n] ? ` – ${RATING_LABELS[n]}` : ''}</option>`)
+      .join('');
+  const todo = d.players.filter((p) => p.myRating === null).length;
+  view.innerHTML = `
+    ${backLink('#/profil', 'Profil')}
+    <h1>Noter les joueurs</h1>
+    <p class="muted">Donne à chacun une note de 1 à 10. Le niveau d'un joueur devient la moyenne arrondie des notes reçues dès ${d.min} notes. <strong>Personne ne voit qui a mis quoi.</strong></p>
+    <p class="small muted">${todo ? `${plural(todo, 'joueur')} sans note de ta part.` : 'Tu as noté tout le monde. Tu peux changer une note à tout moment.'}</p>
+    ${
+      d.players.length
+        ? `<ul class="list card card-tight">${d.players
+            .map(
+              (p) => `<li><label class="row static" style="cursor:default">
+          <span class="av av-sm" aria-hidden="true">${esc(initials(p.name))}</span>
+          <span class="grow title">${esc(p.name)}</span>
+          <select class="input rate-select" data-rate="${p.id}" aria-label="Note de ${esc(p.name)}">${opts(p.myRating)}</select>
+        </label></li>`,
+            )
+            .join('')}</ul>`
+        : '<p class="card empty">Personne à noter pour le moment.</p>'
+    }`;
+}
+
 const SELF_LEVELS = [
   [3, 'Débutant'],
   [5, 'Moyen'],
@@ -728,6 +777,10 @@ const actions = {
     toast('Rappels activés');
     render();
   },
+  'rate-later'(el) {
+    storage.set('fdj-rate-later', el.dataset.n);
+    el.closest('.rate-nudge')?.remove();
+  },
   'setup-later'() {
     storage.set('fdj-setup-later', '1');
     if (current.path === '/') view.querySelector('.push-nudge')?.remove();
@@ -762,11 +815,19 @@ const actions = {
     const u = JSON.parse(el.dataset.user);
     openSheet(`<h2 id="sheet-title">${esc(u.name)}</h2>
       <form data-form="user" data-id="${u.id}" class="form-grid">
-        <label class="field"><span>Niveau (1 à 10)</span>
+        <div class="card" style="background:var(--field);padding:14px">
+          <p><strong>Niveau actuel : ${u.level}/10</strong></p>
+          <p class="small muted" style="margin-top:4px">${
+            u.peer_count >= PEER_MIN
+              ? `Moyenne des potes : ${String(u.peer_avg).replace('.', ',')} sur ${plural(u.peer_count, 'note')}.`
+              : `${plural(u.peer_count, 'note')} des potes sur ${PEER_MIN} nécessaires : c'est le niveau de départ qui compte pour l'instant.`
+          } Indice de forme : ${u.elo}, ${plural(u.games, 'match', 'matchs')}.</p>
+        </div>
+        <label class="field"><span>Niveau de départ (1 à 10)</span>
           <select class="input" name="level">${Array.from({ length: 10 }, (_, i) => i + 1)
-            .map((n) => `<option value="${n}" ${n === u.level ? 'selected' : ''}>${n}${n === 5 ? ' – niveau moyen du groupe' : n === 1 ? ' – débutant' : n === 10 ? ' – le crack' : ''}</option>`)
+            .map((n) => `<option value="${n}" ${n === (u.base_level ?? u.level) ? 'selected' : ''}>${n}${n === 5 ? ' – niveau moyen du groupe' : n === 1 ? ' – débutant' : n === 10 ? ' – le crack' : ''}</option>`)
             .join('')}</select>
-          <small>Point de départ de l'équilibrage. Les résultats prennent le relais au fil des matchs (indice actuel : ${u.elo}, ${plural(u.games, 'match', 'matchs')}).</small>
+          <small>Déclaré à l'inscription. Utilisé tant que le joueur a moins de ${PEER_MIN} notes des potes.</small>
         </label>
         <fieldset class="field">
           <legend>Rôle</legend>
@@ -983,6 +1044,16 @@ document.addEventListener('input', (e) => {
 });
 
 document.addEventListener('change', async (e) => {
+  if (e.target.matches('[data-rate]')) {
+    const v = e.target.value;
+    try {
+      await api('PUT', `/api/ratings/${e.target.dataset.rate}`, { rating: v === '' ? null : Number(v) });
+      toast(v === '' ? 'Note retirée' : 'Note enregistrée');
+    } catch (err) {
+      toast(err.message, true);
+    }
+    return;
+  }
   if (e.target.matches('[data-pref=notifyEmail]')) {
     try {
       const r = await api('PUT', '/api/me', { notifyEmail: e.target.checked });
@@ -1159,7 +1230,11 @@ async function viewPlayer(id) {
         ? `<section class="card">
       <div class="section-head" style="padding:0"><h2>Indice de forme</h2><span class="num" style="font-size:30px">${p.strength}</span></div>
       ${sparkline([p.ratingStart, ...ratings])}
-      <p class="small muted" style="margin-top:8px">Mélange du niveau de départ (${p.level}/10) et des résultats. Sert à équilibrer les équipes. Visible par ${isMe ? 'toi' : 'le joueur'} et les organisateurs.</p>
+      <p class="small muted" style="margin-top:8px">Mélange du niveau (${p.level}/10, ${
+        p.peer.count >= p.peerMin
+          ? `moyenne arrondie de ${plural(p.peer.count, 'note')} des potes : ${String(p.peer.avg).replace('.', ',')}`
+          : `niveau de départ, en attendant ${p.peerMin} notes des potes (${p.peer.count} pour l'instant)`
+      }) et des résultats. Sert à équilibrer les équipes. Visible par ${isMe ? 'toi' : 'le joueur'} et les organisateurs.</p>
     </section>`
         : ''
     }
@@ -1327,7 +1402,7 @@ async function viewProfile() {
     : '';
   view.innerHTML = `
     <div class="player-head" style="padding-top:12px"><span class="av av-b av-lg" aria-hidden="true">${esc(initials(me.name))}</span><h1>${esc(me.name)}</h1></div>
-    <div class="btn-row"><a class="btn" href="#/joueur/${me.id}">Mes stats</a>${me.role === 'admin' ? '<a class="btn btn-dark" href="#/admin">Organisation</a>' : ''}</div>
+    <div class="btn-row"><a class="btn" href="#/joueur/${me.id}">Mes stats</a><a class="btn" href="#/noter">Noter les joueurs</a>${me.role === 'admin' ? '<a class="btn btn-dark" href="#/admin">Organisation</a>' : ''}</div>
     ${await notificationsCardHtml()}${install}
     <section class="card stack">
       <h2>Apparence</h2>

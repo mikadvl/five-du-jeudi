@@ -309,6 +309,9 @@ textarea.input { min-height: 88px; resize: vertical; }
 .goal-rows li { display: flex; align-items: center; gap: 10px; padding: 8px 0; }
 .goal-rows li + li { border-top: 1px solid var(--line); }
 
+/* ---------- Notes ---------- */
+select.input.rate-select { width: 148px; min-width: 0; min-height: 42px; padding: 8px 10px; font-size: 15px; flex: none; }
+
 /* ---------- Bienvenue ---------- */
 .step { display: flex; gap: 14px; align-items: flex-start; }
 .step-num { width: 34px; height: 34px; border-radius: 50%; background: var(--solid); color: var(--on-solid); display: grid; place-items: center; font-weight: 600; flex: none; }

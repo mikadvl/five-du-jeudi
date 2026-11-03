@@ -173,8 +173,8 @@ export function createApp({ db, service, notifier, trustProxy = true }) {
       if (email && db.prepare('SELECT 1 FROM users WHERE lower(email) = ?').get(email))
         throw new HttpError(409, 'Cet email est déjà utilisé');
       const r = db
-        .prepare('INSERT INTO users (name, name_key, email, password_hash, role, level, elo) VALUES (?, ?, ?, ?, ?, ?, ?)')
-        .run(name, nameKey(name), email, hashPassword(password), first ? 'admin' : 'player', level, levelRating(level));
+        .prepare('INSERT INTO users (name, name_key, email, password_hash, role, level, base_level, elo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+        .run(name, nameKey(name), email, hashPassword(password), first ? 'admin' : 'player', level, level, levelRating(level));
       return db.prepare('SELECT * FROM users WHERE id = ?').get(r.lastInsertRowid);
     });
     service.notifyNewAccount(user);
@@ -254,9 +254,15 @@ export function createApp({ db, service, notifier, trustProxy = true }) {
     res.json({
       next: m ? service.serializeMatch(m, req.user) : null,
       pendingVote: service.pendingVote(req.user),
+      toRate: service.unratedCount(req.user),
       last: service.lastResult(),
       teamNames: { A: getSettings(db).team_a_name, B: getSettings(db).team_b_name },
     });
+  });
+  app.get('/api/ratings', requireUser, (req, res) => res.json(service.ratingsFor(req.user)));
+  app.put('/api/ratings/:userId', requireUser, (req, res) => {
+    service.ratePlayer(req.user, req.params.userId, req.body?.rating ?? null);
+    res.json({ ok: true });
   });
   app.put('/api/planned/:slot', requireManager, (req, res) => {
     res.json(service.planSlot(String(req.params.slot), { location: req.body?.location, skipped: !!req.body?.skipped }));
@@ -354,7 +360,9 @@ export function createApp({ db, service, notifier, trustProxy = true }) {
   app.get('/api/admin/users', requireAdmin, (req, res) => {
     const rows = db
       .prepare(
-        `SELECT u.id, u.name, u.email, u.role, u.level, u.elo, u.games, u.active,
+        `SELECT u.id, u.name, u.email, u.role, u.level, u.base_level, u.elo, u.games, u.active,
+                (SELECT COUNT(*) FROM peer_ratings r WHERE r.target_id = u.id) AS peer_count,
+                (SELECT ROUND(AVG(rating), 1) FROM peer_ratings r WHERE r.target_id = u.id) AS peer_avg,
                 (SELECT COUNT(*) FROM push_subs p WHERE p.user_id = u.id) AS devices
          FROM users u ORDER BY u.active DESC, u.name_key`,
       )
@@ -366,17 +374,17 @@ export function createApp({ db, service, notifier, trustProxy = true }) {
     const u = db.prepare('SELECT * FROM users WHERE id = ?').get(Number(req.params.id));
     if (!u) throw new HttpError(404, 'Joueur introuvable');
     const b = req.body || {};
-    const level = b.level !== undefined ? intRange(b.level, 1, 10, 'Niveau') : u.level;
+    const baseLevel = b.level !== undefined ? intRange(b.level, 1, 10, 'Niveau') : (u.base_level ?? u.level);
     const role = b.role !== undefined ? (['admin', 'captain'].includes(b.role) ? b.role : 'player') : u.role;
     const active = b.active !== undefined ? (b.active ? 1 : 0) : u.active;
     if ((role !== 'admin' || !active) && u.role === 'admin') {
       const admins = db.prepare("SELECT COUNT(*) AS n FROM users WHERE role = 'admin' AND active = 1 AND id <> ?").get(u.id).n;
       if (admins === 0) throw bad('Il faut garder au moins un organisateur');
     }
-    db.prepare('UPDATE users SET level = ?, role = ?, active = ? WHERE id = ?').run(level, role, active, u.id);
+    db.prepare('UPDATE users SET base_level = ?, role = ?, active = ? WHERE id = ?').run(baseLevel, role, active, u.id);
     if (role !== u.role && active) service.notifyRole(u.id, role, req.user);
     if (!active) db.prepare('DELETE FROM sessions WHERE user_id = ?').run(u.id);
-    if (level !== u.level) service.recomputeRatings();
+    if (service.refreshLevel(u.id)) service.recomputeRatings();
     res.json({ ok: true });
   });
 
