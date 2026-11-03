@@ -222,10 +222,12 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
     });
     notifyPromoted(m, promoted);
     if (e.user_id !== actor.id) {
-      const who = e.guest_name ? `ton +1 ${e.guest_name}` : 'toi';
+      const day = dayLabel(m.starts_at);
       fire([e.user_id], {
         title: e.guest_name ? `${e.guest_name} retiré du match` : 'Tu as été retiré du match',
-        body: `${actor.name} a retiré ${who} du match du ${dayLabel(m.starts_at)}.`,
+        body: e.guest_name
+          ? `${actor.name} a retiré ton +1 ${e.guest_name} du match du ${day}.`
+          : `${actor.name} t'a retiré du match du ${day}.`,
         url: `/#/match/${m.id}`,
         tag: `match-${m.id}`,
       });

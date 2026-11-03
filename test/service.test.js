@@ -301,7 +301,7 @@ test('notifs : inscrit ou retiré par un orga, nommé capitaine', async () => {
   sent.length = 0;
   svc.cancelEntry(svc.serializeMatch(svc.getMatch(m.id), p).me.entryId, orga);
   await flush();
-  assert.ok(sent.some((n) => n.ids[0] === p.id && n.title === 'Tu as été retiré du match'));
+  assert.ok(sent.some((n) => n.ids[0] === p.id && n.title === 'Tu as été retiré du match' && n.body.startsWith("Mika t'a retiré du match du")));
   sent.length = 0;
   svc.join(m.id, p);
   svc.cancelEntry(svc.serializeMatch(svc.getMatch(m.id), p).me.entryId, p); // il se retire lui-même
