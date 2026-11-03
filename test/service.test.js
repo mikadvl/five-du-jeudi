@@ -311,29 +311,26 @@ test('notifs : inscrit ou retiré par un orga, nommé capitaine', async () => {
   assert.ok(sent.some((n) => n.title === 'Tu es maintenant capitaine'));
 });
 
-test('orgas et capitaines prévenus des inscriptions (push seulement)', async () => {
+test('orgas et capitaines prévenus des nouveaux comptes', async () => {
   const { svc, addUser, sent, flush, db } = setup();
   const orga = addUser('Mika', 5, 'admin');
   const capi = addUser('Nico', 5, 'captain');
   addUser('Seb');
-  const p = addUser('Karim');
-  const m = matchIn(svc);
+  const neo = addUser('Karim', 7);
   await flush();
   sent.length = 0;
-  svc.join(m.id, p, [{ name: 'Sam' }]);
+  svc.notifyNewAccount(neo);
   await flush();
-  const n = sent.find((x) => x.tag === `signups-${m.id}`);
-  assert.equal(n.title, "Karim s'inscrit avec Sam");
-  assert.match(n.body, /2\/12/);
-  assert.deepEqual(n.ids.sort(), [orga.id, capi.id].sort());
-  assert.equal(n.pushOnly, true);
-  sent.length = 0;
-  svc.join(m.id, orga); // l'orga ne se notifie pas lui-même
-  await flush();
-  assert.deepEqual(sent.find((x) => x.tag === `signups-${m.id}`).ids, [capi.id]);
+  const toOrga = sent.find((x) => x.ids.includes(orga.id));
+  const toCapi = sent.find((x) => x.ids.includes(capi.id));
+  assert.equal(toOrga.title, 'Nouveau joueur : Karim');
+  assert.match(toOrga.body, /niveau bon/);
+  assert.equal(toOrga.url, '/#/admin');
+  assert.equal(toCapi.url, `/#/joueur/${neo.id}`);
+  assert.ok(!sent.some((x) => x.ids.includes(neo.id)));
   setSettings(db, { notify_staff_signups: '0' });
   sent.length = 0;
-  svc.join(m.id, capi);
+  svc.notifyNewAccount(neo);
   await flush();
-  assert.ok(!sent.some((x) => x.tag === `signups-${m.id}`));
+  assert.equal(sent.length, 0);
 });

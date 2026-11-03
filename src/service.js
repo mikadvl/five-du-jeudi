@@ -150,29 +150,7 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
       const g = cleaned.map((x) => insertEntry(m, user.id, x));
       return { entry: me, guests: g };
     });
-    const extra = cleaned.length ? ` avec ${cleaned.map((x) => x.name).join(', ')}` : '';
-    notifyStaffSignup(m, user, `${user.name} s'inscrit${extra}`, res.entry.spot === 'waitlist');
     return res;
-  }
-
-  /** Prévient organisateurs et capitaines d'une inscription (notif push seulement, regroupée par match). */
-  function notifyStaffSignup(m, actor, what, waitlist) {
-    if (settings().notify_staff_signups !== '1') return;
-    const staff = db
-      .prepare("SELECT id FROM users WHERE active = 1 AND role IN ('admin', 'captain') AND id <> ?")
-      .all(actor.id)
-      .map((u) => u.id);
-    if (!staff.length) return;
-    const fresh = getMatch(m.id);
-    const n = confirmedCount(m.id);
-    const w = db.prepare("SELECT COUNT(*) AS n FROM entries WHERE match_id = ? AND state = 'active' AND spot = 'waitlist'").get(m.id).n;
-    fire(staff, {
-      title: `${what}${waitlist ? " (liste d'attente)" : ''}`,
-      body: `Match du ${dayLabel(fresh.starts_at)} : ${n}/${fresh.capacity}${w ? `, ${w} en attente` : ''}.`,
-      url: `/#/match/${m.id}`,
-      tag: `signups-${m.id}`,
-      pushOnly: true,
-    });
   }
 
   function addGuest(matchId, user, guest) {
@@ -190,7 +168,6 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
       if (n >= 4) throw bad('4 invités maximum');
       return insertEntry(m, user.id, g);
     });
-    notifyStaffSignup(m, user, `${user.name} ajoute un +1 : ${g.name}`, res.spot === 'waitlist');
     return res;
   }
 
@@ -283,6 +260,23 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
       return out;
     });
     for (const [m, list] of promoted) notifyPromoted(m, list);
+  }
+
+  /** Nouveau compte créé : prévient organisateurs et capitaines. */
+  function notifyNewAccount(user) {
+    if (settings().notify_staff_signups !== '1') return;
+    const staff = db.prepare("SELECT id, role FROM users WHERE active = 1 AND role IN ('admin', 'captain') AND id <> ?").all(user.id);
+    const levelLabel = { 3: 'débutant', 5: 'moyen', 7: 'bon', 9: 'très bon' }[user.level] || `niveau ${user.level}`;
+    const total = db.prepare('SELECT COUNT(*) AS n FROM users WHERE active = 1').get().n;
+    for (const role of ['admin', 'captain']) {
+      const ids = staff.filter((u) => u.role === role).map((u) => u.id);
+      fire(ids, {
+        title: `Nouveau joueur : ${user.name}`,
+        body: `${user.name} vient de créer son compte (niveau ${levelLabel}). Vous êtes ${total} dans le groupe.${role === 'admin' ? ' Tu peux ajuster son niveau dans Organisation.' : ''}`,
+        url: role === 'admin' ? '/#/admin' : `/#/joueur/${user.id}`,
+        tag: `user-${user.id}`,
+      });
+    }
   }
 
   function notifyRole(userId, role, actor) {
@@ -968,6 +962,7 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
     addPlayer,
     deleteUser,
     notifyRole,
+    notifyNewAccount,
     cancelEntry,
     createMatch,
     updateMatch,

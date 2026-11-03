@@ -1415,7 +1415,7 @@ async function viewAdmin() {
         <h2>Rappels</h2>
         ${num('open_days_before', 'Ouverture des inscriptions', 1, 14, 'Nombre de jours avant le match. Le match est créé automatiquement à ce moment-là.')}
         <label class="switch"><span>Prévenir tout le monde à l'ouverture</span><input type="checkbox" name="remind_open" ${String(s.remind_open) === '1' ? 'checked' : ''}></label>
-        <label class="switch"><span>Prévenir organisateurs et capitaines à chaque inscription</span><input type="checkbox" name="notify_staff_signups" ${String(s.notify_staff_signups) === '1' ? 'checked' : ''}></label>
+        <label class="switch"><span>Prévenir organisateurs et capitaines de chaque nouveau compte</span><input type="checkbox" name="notify_staff_signups" ${String(s.notify_staff_signups) === '1' ? 'checked' : ''}></label>
         ${num('remind_unregistered_hours', 'Relance des non-inscrits', 0, 168, "Heures avant le match, seulement s'il reste des places. 0 pour ne jamais relancer.")}
         ${num('remind_confirmed_hours', 'Rappel aux joueurs', 0, 72, 'Heures avant le match. 0 pour désactiver.')}
       </section>

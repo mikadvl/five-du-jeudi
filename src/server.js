@@ -177,6 +177,7 @@ export function createApp({ db, service, notifier, trustProxy = true }) {
         .run(name, nameKey(name), email, hashPassword(password), first ? 'admin' : 'player', level, levelRating(level));
       return db.prepare('SELECT * FROM users WHERE id = ?').get(r.lastInsertRowid);
     });
+    service.notifyNewAccount(user);
     setSessionCookie(req, res, user.id);
     res.status(201).json({ user: publicUser(user) });
   });

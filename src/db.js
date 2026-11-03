@@ -118,7 +118,7 @@ export const DEFAULT_SETTINGS = {
   remind_unregistered_hours: '26', // relance des non-inscrits s'il reste des places (0 = off)
   remind_confirmed_hours: '8', // rappel aux joueurs confirmés (0 = off)
   remind_open: '1',
-  notify_staff_signups: '1', // notif aux organisateurs et capitaines à chaque inscription
+  notify_staff_signups: '1', // notif aux organisateurs et capitaines à chaque nouveau compte
   team_a_name: 'Chasubles',
   team_b_name: 'Sans chasuble',
   mvp_vote_hours: '72',
