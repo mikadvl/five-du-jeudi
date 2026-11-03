@@ -174,13 +174,23 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
     assertJoinable(m, admin);
     const u = db.prepare('SELECT id FROM users WHERE id = ? AND active = 1').get(Number(userId));
     if (!u) throw new HttpError(404, 'Joueur introuvable');
-    return tx(db, () => {
+    const res = tx(db, () => {
       const exists = db
         .prepare("SELECT id FROM entries WHERE match_id = ? AND user_id = ? AND guest_name IS NULL AND state = 'active'")
         .get(m.id, u.id);
       if (exists) throw conflict('Ce joueur est déjà inscrit');
       return insertEntry(m, u.id, null);
     });
+    if (u.id !== admin.id) {
+      const when = `${dayLabel(m.starts_at)} à ${timeLabel(m.starts_at)}`;
+      fire([u.id], {
+        title: res.spot === 'confirmed' ? 'Tu es inscrit au five' : "Tu es en liste d'attente",
+        body: `${admin.name} t'a inscrit au match du ${when}${res.spot === 'confirmed' ? '' : ", en liste d'attente"}. Tu peux te désister depuis l'app.`,
+        url: `/#/match/${m.id}`,
+        tag: `match-${m.id}`,
+      });
+    }
+    return res;
   }
 
   function cancelEntry(entryId, actor) {
@@ -211,6 +221,15 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
       return { promoted: normalize(getMatch(m.id), vacated), count: targets.length };
     });
     notifyPromoted(m, promoted);
+    if (e.user_id !== actor.id) {
+      const who = e.guest_name ? `ton +1 ${e.guest_name}` : 'toi';
+      fire([e.user_id], {
+        title: e.guest_name ? `${e.guest_name} retiré du match` : 'Tu as été retiré du match',
+        body: `${actor.name} a retiré ${who} du match du ${dayLabel(m.starts_at)}.`,
+        url: `/#/match/${m.id}`,
+        tag: `match-${m.id}`,
+      });
+    }
     return { cancelled: count, promoted: promoted.length };
   }
 
@@ -237,6 +256,20 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
       return out;
     });
     for (const [m, list] of promoted) notifyPromoted(m, list);
+  }
+
+  function notifyRole(userId, role, actor) {
+    const label = { captain: 'capitaine', admin: 'organisateur' }[role];
+    if (!label || userId === actor.id) return;
+    fire([userId], {
+      title: `Tu es maintenant ${label}`,
+      body:
+        role === 'captain'
+          ? `${actor.name} t'a nommé capitaine : tu peux faire les équipes, saisir le score et gérer les matchs.`
+          : `${actor.name} t'a nommé organisateur : tu as accès à toute l'organisation du groupe.`,
+      url: role === 'admin' ? '/#/admin' : '/#/',
+      tag: 'role',
+    });
   }
 
   // ---------- Matchs ----------
@@ -907,6 +940,7 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
     addGuest,
     addPlayer,
     deleteUser,
+    notifyRole,
     cancelEntry,
     createMatch,
     updateMatch,

@@ -372,6 +372,7 @@ export function createApp({ db, service, notifier, trustProxy = true }) {
       if (admins === 0) throw bad('Il faut garder au moins un organisateur');
     }
     db.prepare('UPDATE users SET level = ?, role = ?, active = ? WHERE id = ?').run(level, role, active, u.id);
+    if (role !== u.role && active) service.notifyRole(u.id, role, req.user);
     if (!active) db.prepare('DELETE FROM sessions WHERE user_id = ?').run(u.id);
     if (level !== u.level) service.recomputeRatings();
     res.json({ ok: true });

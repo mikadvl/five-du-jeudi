@@ -289,3 +289,24 @@ test('suppression d’un compte : tout part, la liste d’attente remonte, Elo r
   assert.ok(sent.some((n) => n.title === 'Tu passes titulaire !'));
   assert.ok(!svc.stats('all').players.some((p) => p.userId === ps[0].id));
 });
+
+test('notifs : inscrit ou retiré par un orga, nommé capitaine', async () => {
+  const { svc, addUser, sent, flush } = setup();
+  const orga = addUser('Mika', 5, 'admin');
+  const p = addUser('Karim');
+  const m = matchIn(svc);
+  svc.addPlayer(m.id, orga, p.id);
+  await flush();
+  assert.ok(sent.some((n) => n.ids[0] === p.id && n.title === 'Tu es inscrit au five' && n.body.startsWith('Mika')));
+  sent.length = 0;
+  svc.cancelEntry(svc.serializeMatch(svc.getMatch(m.id), p).me.entryId, orga);
+  await flush();
+  assert.ok(sent.some((n) => n.ids[0] === p.id && n.title === 'Tu as été retiré du match'));
+  sent.length = 0;
+  svc.join(m.id, p);
+  svc.cancelEntry(svc.serializeMatch(svc.getMatch(m.id), p).me.entryId, p); // il se retire lui-même
+  svc.notifyRole(p.id, 'captain', orga);
+  await flush();
+  assert.ok(!sent.some((n) => n.title === 'Tu as été retiré du match'));
+  assert.ok(sent.some((n) => n.title === 'Tu es maintenant capitaine'));
+});
