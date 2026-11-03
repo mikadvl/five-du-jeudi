@@ -1,6 +1,7 @@
 // Envoi des notifications : Web Push (PWA) + email optionnel (SMTP).
 import webpush from 'web-push';
 import { getSettings, setSettings } from './db.js';
+import { renderEmail } from './email.js';
 
 export function ensureVapidKeys(db) {
   if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
@@ -56,11 +57,13 @@ export async function createNotifier(db, { subject = 'mailto:admin@example.com',
     if (!mailer || !user.email || !user.notify_email) return 0;
     const s = getSettings(db);
     const link = appUrl ? `${appUrl.replace(/\/$/, '')}${payload.url || '/'}` : '';
+    const { html, text } = renderEmail({ groupName: s.group_name, title: payload.title, body: payload.body, link, appUrl });
     await mailer.sendMail({
       from: `"${s.group_name}" <${from}>`,
       to: user.email,
       subject: payload.title,
-      text: `${payload.body}\n\n${link}`.trim(),
+      text,
+      html,
     });
     return 1;
   }
