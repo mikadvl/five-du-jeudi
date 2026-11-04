@@ -319,6 +319,19 @@ select.input.rate-select { width: 148px; min-width: 0; min-height: 42px; padding
 .peer-note { min-width: 30px; height: 30px; padding: 0 8px; border-radius: 999px; background: var(--card); display: inline-grid; place-items: center; font-weight: 600; font-size: 14px; }
 .peer-votes li.is-off .peer-note { background: var(--danger); color: #fff; }
 
+/* ---------- Terrain (compo) ---------- */
+.pitch { position: relative; aspect-ratio: 960 / 1550; border-radius: 18px; overflow: hidden;
+  background: repeating-linear-gradient(180deg, #17803f 0 10%, #1a8a45 10% 20%); }
+.pitch ul { list-style: none; margin: 0; padding: 0; }
+.pitch-lines { position: absolute; inset: 0; width: 100%; height: 100%; fill: none; stroke: rgba(255, 255, 255, 0.8); stroke-width: 5; vector-effect: non-scaling-stroke; }
+.pitch-lines * { vector-effect: non-scaling-stroke; stroke-width: 2; }
+.pitch-player { position: absolute; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: 3px; width: 76px; }
+.pitch-player .av { width: 40px; height: 40px; font-size: 13px; box-shadow: 0 0 0 2.5px #fff, 0 3px 8px rgba(0, 0, 0, 0.3); }
+.pitch-player .av-b { background: #101814; color: #fff; }
+.pitch-player .av-a { background: #ff6b1a; color: #3a1600; }
+.pitch-player .av.is-me { box-shadow: 0 0 0 2.5px #fff, 0 0 0 5px #ffd23f, 0 3px 8px rgba(0, 0, 0, 0.3); }
+.pitch-name { max-width: 76px; padding: 1px 7px; border-radius: 999px; background: rgba(16, 24, 20, 0.82); color: #fff; font-size: 11.5px; font-weight: 600; line-height: 1.5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
 /* ---------- Bienvenue ---------- */
 .step { display: flex; gap: 14px; align-items: flex-start; }
 .step-num { width: 34px; height: 34px; border-radius: 50%; background: var(--solid); color: var(--on-solid); display: grid; place-items: center; font-weight: 600; flex: none; }

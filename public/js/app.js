@@ -1,5 +1,7 @@
 // Five du jeudi — front (JS natif, sans build). Routage par hash, rendu par template strings.
 
+import { positions } from './lineup.js';
+
 const view = document.getElementById('view');
 const tabbar = document.getElementById('tabbar');
 const sheetEl = document.getElementById('sheet');
@@ -344,6 +346,35 @@ function avatarHtml(e, m) {
     <span class="name" aria-hidden="true">${e.mine && !e.isGuest ? 'Toi' : esc(e.name.split(' ')[0])}</span>${sub}</li>`;
 }
 
+/** Compo sur un terrain de five : équipe B en haut, équipe A en bas (mêmes placements que l'image partagée). */
+function pitchHtml(A, B, m) {
+  const place = (players, team) => {
+    const pos = positions(players.length);
+    return players
+      .map((e, i) => {
+        const [fx, fy] = pos[i];
+        const left = 13 + fx * 74;
+        const depth = 8.5 + fy * 30; // % depuis la ligne de but : 3 rangées à 8,5 / 23,5 / 38,5 %
+        const top = team === 'B' ? depth : 100 - depth - 3;
+        const me = e.mine && !e.isGuest;
+        const badge = e.isGuest ? '<span class="badge">+1</span>' : m.played && e.goals ? `<span class="badge">${e.goals}</span>` : '';
+        const label = `${e.name}${e.isGuest ? `, invité de ${e.hostName}` : ''}${m.played && e.goals ? `, ${plural(e.goals, 'but')}` : ''}`;
+        return `<li class="pitch-player" style="left:${left.toFixed(2)}%;top:${top.toFixed(2)}%" aria-label="${esc(label)}">
+          <span class="av ${team === 'A' ? 'av-a' : 'av-b'}${me ? ' is-me' : ''}" aria-hidden="true">${esc(initials(e.name))}${badge}</span>
+          <span class="pitch-name" aria-hidden="true">${me ? 'Toi' : esc(e.name.split(' ')[0])}</span></li>`;
+      })
+      .join('');
+  };
+  return `<div class="pitch" role="group" aria-label="Compositions sur le terrain">
+    <svg class="pitch-lines" viewBox="0 0 960 1550" aria-hidden="true">
+      <rect x="24" y="24" width="912" height="1502" rx="18"/><line x1="24" y1="775" x2="936" y2="775"/>
+      <circle cx="480" cy="775" r="110"/><path d="M290 24a190 190 0 0 0 380 0M290 1526a190 190 0 0 1 380 0"/>
+    </svg>
+    <ul aria-label="${esc(m.teamNames.B)}">${place(B, 'B')}</ul>
+    <ul aria-label="${esc(m.teamNames.A)}">${place(A, 'A')}</ul>
+  </div>`;
+}
+
 function playersHtml(m) {
   if (m.cancelled) return '';
   const teamed = m.confirmed.filter((e) => e.team);
@@ -355,18 +386,10 @@ function playersHtml(m) {
     const unassigned = m.confirmed.filter((e) => !e.team);
     return `<div class="section-head"><h2>Les équipes</h2><button class="link" data-action="share">Partager</button></div>
     <section class="card teams-card">
-      <div class="team-head"><span><span class="dot dot-a"></span>${esc(m.teamNames.A)}</span>${showP ? `<span class="num">${p} %</span>` : ''}</div>
-      <ul class="roster">${A.map((e) => avatarHtml(e, m)).join('')}</ul>
-      ${
-        showP
-          ? `<div class="forecast">
-        <div class="forecast-bar" role="img" aria-label="${esc(`Pronostic : ${m.teamNames.A} ${p} %, ${m.teamNames.B} ${100 - p} %`)}"><span class="a" data-w="${p}"></span><span class="b"></span></div>
-        <p>Pronostic selon les niveaux et les derniers résultats</p>
-      </div>`
-          : '<div class="divider"></div>'
-      }
-      <ul class="roster">${B.map((e) => avatarHtml(e, m)).join('')}</ul>
       <div class="team-head"><span><span class="dot dot-b"></span>${esc(m.teamNames.B)}</span>${showP ? `<span class="num">${100 - p} %</span>` : ''}</div>
+      ${pitchHtml(A, B, m)}
+      <div class="team-head"><span><span class="dot dot-a"></span>${esc(m.teamNames.A)}</span>${showP ? `<span class="num">${p} %</span>` : ''}</div>
+      ${showP ? '<p class="small muted" style="text-align:center">Pronostic selon les niveaux et les derniers résultats</p>' : ''}
       ${unassigned.length ? `<p class="small muted">Sans équipe pour l'instant : ${unassigned.map((e) => esc(e.name)).join(', ')}.</p>` : ''}
     </section>`;
   }

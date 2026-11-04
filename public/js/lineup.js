@@ -27,7 +27,7 @@ const FORMATIONS = {
   7: [[0.5, 0], [0.16, 0.5], [0.5, 0.5], [0.84, 0.5], [0.16, 1], [0.5, 1], [0.84, 1]],
 };
 
-function positions(n) {
+export function positions(n) {
   if (FORMATIONS[n]) return FORMATIONS[n];
   // Au-delà de 7 : grille régulière
   const cols = Math.ceil(Math.sqrt(n));
