@@ -1,7 +1,7 @@
 // Image de la compo : terrain de five vu de dessus, une équipe par moitié, prête à partager.
 
 const W = 1080;
-const H = 1630;
+const H = 1680;
 const PITCH = { x: 60, y: 320, w: 960, h: 1200 };
 
 const COLORS = {
@@ -22,7 +22,7 @@ const FORMATIONS = {
   2: [[0.5, 0], [0.5, 1]],
   3: [[0.5, 0], [0.28, 1], [0.72, 1]],
   4: [[0.5, 0], [0.25, 0.5], [0.75, 0.5], [0.5, 1]],
-  5: [[0.5, 0], [0.25, 0.5], [0.75, 0.5], [0.3, 1], [0.7, 1]],
+  5: [[0.5, 0], [0.18, 0.5], [0.82, 0.5], [0.33, 1], [0.67, 1]],
   6: [[0.5, 0], [0.16, 0.5], [0.5, 0.5], [0.84, 0.5], [0.3, 1], [0.7, 1]],
   7: [[0.5, 0], [0.16, 0.5], [0.5, 0.5], [0.84, 0.5], [0.16, 1], [0.5, 1], [0.84, 1]],
 };
@@ -210,13 +210,32 @@ export async function renderLineup(data) {
   tag(data.teamNames.B, PITCH.y - 66, false);
   tag(data.teamNames.A, PITCH.y + PITCH.h + 16, true);
 
+  // Pronostic : % de chances de chaque équipe, à droite de son étiquette, + barre sous l'en-tête
+  if (Number.isFinite(data.prediction)) {
+    const pA = Math.round(data.prediction);
+    const pB = 100 - pA;
+    const pct = (val, y, isA) => {
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = isA ? COLORS.bib : '#ffffff';
+      ctx.font = "800 40px Bricolage, 'Helvetica Neue', Arial, sans-serif";
+      ctx.fillText(`${val} %`, PITCH.x + PITCH.w, y + 26);
+      const w = ctx.measureText(`${val} %`).width;
+      ctx.fillStyle = COLORS.muted;
+      ctx.font = "400 26px Geist, 'Helvetica Neue', Arial, sans-serif";
+      ctx.fillText('Pronostic', PITCH.x + PITCH.w - w - 14, y + 28);
+    };
+    pct(pB, PITCH.y - 66, false);
+    pct(pA, PITCH.y + PITCH.h + 16, true);
+  }
+
   // Pied
   ctx.textAlign = 'center';
   ctx.textBaseline = 'alphabetic';
   ctx.fillStyle = COLORS.muted;
   ctx.font = "400 28px Geist, 'Helvetica Neue', Arial, sans-serif";
-  ctx.textAlign = 'right';
-  ctx.fillText(data.url ? data.url.replace(/^https?:\/\//, '').replace(/\/#.*$/, '') : '', PITCH.x + PITCH.w, PITCH.y + PITCH.h + 52);
+  ctx.textAlign = 'center';
+  ctx.fillText(data.url ? data.url.replace(/^https?:\/\//, '').replace(/\/#.*$/, '') : '', W / 2, H - 34);
 
   return new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
 }

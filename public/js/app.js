@@ -787,6 +787,7 @@ const actions = {
         teamNames: m.teamNames,
         teamA: team('A').map((e) => ({ name: e.name, isGuest: e.isGuest })),
         teamB: team('B').map((e) => ({ name: e.name, isGuest: e.isGuest })),
+        prediction: m.played ? undefined : m.teams?.prediction,
         url,
       });
       if (blob) file = new File([blob], `compo-${fmt(m.startsAt, { day: '2-digit', month: '2-digit' }).replace('/', '-')}.png`, { type: 'image/png' });
