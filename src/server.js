@@ -363,11 +363,13 @@ export function createApp({ db, service, notifier, trustProxy = true }) {
         `SELECT u.id, u.name, u.email, u.role, u.level, u.base_level, u.elo, u.games, u.active,
                 (SELECT COUNT(*) FROM peer_ratings r WHERE r.target_id = u.id) AS peer_count,
                 (SELECT ROUND(AVG(rating), 1) FROM peer_ratings r WHERE r.target_id = u.id) AS peer_avg,
+                (SELECT GROUP_CONCAT(rating) FROM (SELECT rating FROM peer_ratings r WHERE r.target_id = u.id ORDER BY rating)) AS peer_list,
                 (SELECT COUNT(*) FROM push_subs p WHERE p.user_id = u.id) AS devices
          FROM users u ORDER BY u.active DESC, u.name_key`,
       )
       .all();
-    res.json(rows.map((r) => ({ ...r, elo: Math.round(r.elo), active: !!r.active })));
+    // Répartition anonyme des notes (organisateurs uniquement : cette route est réservée aux admins)
+    res.json(rows.map((r) => ({ ...r, peer_list: r.peer_list ? String(r.peer_list).split(',').map(Number) : [], elo: Math.round(r.elo), active: !!r.active })));
   });
 
   app.put('/api/admin/users/:id', requireAdmin, (req, res) => {

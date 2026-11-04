@@ -312,6 +312,11 @@ textarea.input { min-height: 88px; resize: vertical; }
 /* ---------- Notes ---------- */
 select.input.rate-select { width: 148px; min-width: 0; min-height: 42px; padding: 8px 10px; font-size: 15px; flex: none; }
 
+/* Répartition des notes (organisateurs) */
+.peer-dist { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.peer-note { min-width: 30px; height: 30px; padding: 0 8px; border-radius: 999px; background: var(--card); display: inline-grid; place-items: center; font-weight: 600; font-size: 14px; }
+.peer-note.is-off { background: var(--danger); color: #fff; }
+
 /* ---------- Bienvenue ---------- */
 .step { display: flex; gap: 14px; align-items: flex-start; }
 .step-num { width: 34px; height: 34px; border-radius: 50%; background: var(--solid); color: var(--on-solid); display: grid; place-items: center; font-weight: 600; flex: none; }

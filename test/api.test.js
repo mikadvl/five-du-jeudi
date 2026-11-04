@@ -128,3 +128,25 @@ test('le niveau est choisi par le joueur à l’inscription', async () => {
     server.close();
   }
 });
+
+test('répartition anonyme des notes : organisateurs uniquement', async () => {
+  const { server, client, code } = await boot();
+  try {
+    const orga = client();
+    const capi = client();
+    const x = client();
+    await orga('POST', '/api/auth/register', { name: 'Orga', password: 'secret1', inviteCode: code });
+    const c = await capi('POST', '/api/auth/register', { name: 'Capi', password: 'secret1', inviteCode: code });
+    const t = await x('POST', '/api/auth/register', { name: 'Cible', password: 'secret1', inviteCode: code });
+    await orga('PUT', `/api/admin/users/${c.body.user.id}`, { role: 'captain' });
+    await orga('PUT', `/api/ratings/${t.body.user.id}`, { rating: 7 });
+    await capi('PUT', `/api/ratings/${t.body.user.id}`, { rating: 2 });
+    const list = (await orga('GET', '/api/admin/users')).body;
+    const row = list.find((u) => u.id === t.body.user.id);
+    assert.deepEqual(row.peer_list, [2, 7]);
+    assert.ok(!('rater_id' in row));
+    assert.equal((await capi('GET', '/api/admin/users')).status, 403);
+  } finally {
+    server.close();
+  }
+});

@@ -480,6 +480,20 @@ function adminToolsHtml(m) {
 const PEER_MIN = 3;
 const RATING_LABELS = { 1: 'débutant', 3: 'en progrès', 5: 'niveau moyen du groupe', 7: 'bon', 9: 'très bon', 10: 'le crack' };
 
+/** Répartition anonyme des notes reçues, avec les notes très éloignées de la médiane signalées (organisateurs). */
+function peerDistributionHtml(list = []) {
+  if (!list.length) return '';
+  const sorted = [...list].sort((a, b) => a - b);
+  const mid = sorted.length % 2 ? sorted[(sorted.length - 1) / 2] : (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2;
+  const outliers = sorted.filter((n) => Math.abs(n - mid) >= 3).length;
+  return `<div class="peer-dist" aria-label="Notes reçues : ${sorted.join(', ')}">${sorted
+    .map((n) => `<span class="peer-note${Math.abs(n - mid) >= 3 ? ' is-off' : ''}">${n}</span>`)
+    .join('')}</div>
+    <p class="small muted" style="margin-top:6px">Notes reçues, anonymes, visibles uniquement par les organisateurs.${
+      outliers ? ` <strong style="color:var(--danger)">${plural(outliers, 'note')} très éloignée${outliers > 1 ? 's' : ''} des autres.</strong>` : ''
+    }</p>`;
+}
+
 function rateNudgeHtml(n) {
   if (!n) return '';
   let seen = 0;
@@ -822,6 +836,7 @@ const actions = {
               ? `Moyenne des potes : ${String(u.peer_avg).replace('.', ',')} sur ${plural(u.peer_count, 'note')}.`
               : `${plural(u.peer_count, 'note')} des potes sur ${PEER_MIN} nécessaires : c'est le niveau de départ qui compte pour l'instant.`
           } Indice de forme : ${u.elo}, ${plural(u.games, 'match', 'matchs')}.</p>
+          ${peerDistributionHtml(u.peer_list)}
         </div>
         <label class="field"><span>Niveau de départ (1 à 10)</span>
           <select class="input" name="level">${Array.from({ length: 10 }, (_, i) => i + 1)
