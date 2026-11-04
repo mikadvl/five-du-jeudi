@@ -129,7 +129,7 @@ test('le niveau est choisi par le joueur à l’inscription', async () => {
   }
 });
 
-test('répartition anonyme des notes : organisateurs uniquement', async () => {
+test('détail des notes avec votants : organisateurs uniquement', async () => {
   const { server, client, code } = await boot();
   try {
     const orga = client();
@@ -143,8 +143,9 @@ test('répartition anonyme des notes : organisateurs uniquement', async () => {
     await capi('PUT', `/api/ratings/${t.body.user.id}`, { rating: 2 });
     const list = (await orga('GET', '/api/admin/users')).body;
     const row = list.find((u) => u.id === t.body.user.id);
-    assert.deepEqual(row.peer_list, [2, 7]);
-    assert.ok(!('rater_id' in row));
+    assert.deepEqual(row.peer_votes, [{ rater: 'Capi', rating: 2 }, { rater: 'Orga', rating: 7 }]);
+    const forTarget = (await x('GET', '/api/ratings')).body;
+    assert.ok(!JSON.stringify(forTarget).includes('Capi\",\"rating'));
     assert.equal((await capi('GET', '/api/admin/users')).status, 403);
   } finally {
     server.close();

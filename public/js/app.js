@@ -480,16 +480,18 @@ function adminToolsHtml(m) {
 const PEER_MIN = 3;
 const RATING_LABELS = { 1: 'débutant', 3: 'en progrès', 5: 'niveau moyen du groupe', 7: 'bon', 9: 'très bon', 10: 'le crack' };
 
-/** Répartition anonyme des notes reçues, avec les notes très éloignées de la médiane signalées (organisateurs). */
-function peerDistributionHtml(list = []) {
-  if (!list.length) return '';
-  const sorted = [...list].sort((a, b) => a - b);
-  const mid = sorted.length % 2 ? sorted[(sorted.length - 1) / 2] : (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2;
-  const outliers = sorted.filter((n) => Math.abs(n - mid) >= 3).length;
-  return `<div class="peer-dist" aria-label="Notes reçues : ${sorted.join(', ')}">${sorted
-    .map((n) => `<span class="peer-note${Math.abs(n - mid) >= 3 ? ' is-off' : ''}">${n}</span>`)
-    .join('')}</div>
-    <p class="small muted" style="margin-top:6px">Notes reçues, anonymes, visibles uniquement par les organisateurs.${
+/** Notes reçues avec le nom des votants ; notes très éloignées de la médiane signalées (organisateurs uniquement). */
+function peerDistributionHtml(votes = []) {
+  if (!votes.length) return '';
+  const sorted = [...votes].sort((a, b) => a.rating - b.rating);
+  const vals = sorted.map((v) => v.rating);
+  const mid = vals.length % 2 ? vals[(vals.length - 1) / 2] : (vals[vals.length / 2 - 1] + vals[vals.length / 2]) / 2;
+  const off = (n) => Math.abs(n - mid) >= 3;
+  const outliers = vals.filter(off).length;
+  return `<ul class="peer-votes">${sorted
+    .map((v) => `<li class="${off(v.rating) ? 'is-off' : ''}"><span>${esc(v.rater)}</span><span class="peer-note">${v.rating}</span></li>`)
+    .join('')}</ul>
+    <p class="small muted" style="margin-top:6px">Visible uniquement par les organisateurs.${
       outliers ? ` <strong style="color:var(--danger)">${plural(outliers, 'note')} très éloignée${outliers > 1 ? 's' : ''} des autres.</strong>` : ''
     }</p>`;
 }
@@ -505,7 +507,7 @@ function rateNudgeHtml(n) {
   if (n <= seen) return '';
   return `<section class="card rate-nudge stack">
     <div><p><strong>${n > 1 ? `${n} joueurs à noter` : '1 joueur à noter'}</strong></p>
-    <p class="small muted" style="margin-top:4px">Le niveau de chacun est la moyenne des notes des potes : c'est ce qui équilibre les équipes. Les notes sont anonymes.</p></div>
+    <p class="small muted" style="margin-top:4px">Le niveau de chacun est la moyenne des notes des potes : c'est ce qui équilibre les équipes.</p></div>
     <div class="btn-row"><a class="btn btn-small btn-dark" href="#/noter">Noter</a><button class="btn btn-small" data-action="rate-later" data-n="${n}">Plus tard</button></div>
   </section>`;
 }
@@ -521,7 +523,7 @@ async function viewRate() {
   view.innerHTML = `
     ${backLink('#/profil', 'Profil')}
     <h1>Noter les joueurs</h1>
-    <p class="muted">Donne à chacun une note de 1 à 10. Le niveau d'un joueur devient la moyenne arrondie des notes reçues dès ${d.min} notes. <strong>Personne ne voit qui a mis quoi.</strong></p>
+    <p class="muted">Donne à chacun une note de 1 à 10. Le niveau d'un joueur devient la moyenne arrondie des notes reçues dès ${d.min} notes. Les autres joueurs ne voient pas tes notes ; seuls les organisateurs peuvent les consulter.</p>
     <p class="small muted">${todo ? `${plural(todo, 'joueur')} sans note de ta part.` : 'Tu as noté tout le monde. Tu peux changer une note à tout moment.'}</p>
     ${
       d.players.length
@@ -836,7 +838,7 @@ const actions = {
               ? `Moyenne des potes : ${String(u.peer_avg).replace('.', ',')} sur ${plural(u.peer_count, 'note')}.`
               : `${plural(u.peer_count, 'note')} des potes sur ${PEER_MIN} nécessaires : c'est le niveau de départ qui compte pour l'instant.`
           } Indice de forme : ${u.elo}, ${plural(u.games, 'match', 'matchs')}.</p>
-          ${peerDistributionHtml(u.peer_list)}
+          ${peerDistributionHtml(u.peer_votes)}
         </div>
         <label class="field"><span>Niveau de départ (1 à 10)</span>
           <select class="input" name="level">${Array.from({ length: 10 }, (_, i) => i + 1)

@@ -313,9 +313,11 @@ textarea.input { min-height: 88px; resize: vertical; }
 select.input.rate-select { width: 148px; min-width: 0; min-height: 42px; padding: 8px 10px; font-size: 15px; flex: none; }
 
 /* Répartition des notes (organisateurs) */
-.peer-dist { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.peer-votes { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 4px; }
+.peer-votes li { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 14px; }
+.peer-votes li.is-off span:first-child { color: var(--danger); font-weight: 600; }
 .peer-note { min-width: 30px; height: 30px; padding: 0 8px; border-radius: 999px; background: var(--card); display: inline-grid; place-items: center; font-weight: 600; font-size: 14px; }
-.peer-note.is-off { background: var(--danger); color: #fff; }
+.peer-votes li.is-off .peer-note { background: var(--danger); color: #fff; }
 
 /* ---------- Bienvenue ---------- */
 .step { display: flex; gap: 14px; align-items: flex-start; }

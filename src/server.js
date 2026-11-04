@@ -363,13 +363,20 @@ export function createApp({ db, service, notifier, trustProxy = true }) {
         `SELECT u.id, u.name, u.email, u.role, u.level, u.base_level, u.elo, u.games, u.active,
                 (SELECT COUNT(*) FROM peer_ratings r WHERE r.target_id = u.id) AS peer_count,
                 (SELECT ROUND(AVG(rating), 1) FROM peer_ratings r WHERE r.target_id = u.id) AS peer_avg,
-                (SELECT GROUP_CONCAT(rating) FROM (SELECT rating FROM peer_ratings r WHERE r.target_id = u.id ORDER BY rating)) AS peer_list,
                 (SELECT COUNT(*) FROM push_subs p WHERE p.user_id = u.id) AS devices
          FROM users u ORDER BY u.active DESC, u.name_key`,
       )
       .all();
-    // Répartition anonyme des notes (organisateurs uniquement : cette route est réservée aux admins)
-    res.json(rows.map((r) => ({ ...r, peer_list: r.peer_list ? String(r.peer_list).split(',').map(Number) : [], elo: Math.round(r.elo), active: !!r.active })));
+    // Détail des notes avec le nom des votants : organisateurs uniquement (route réservée aux admins)
+    const votes = db
+      .prepare('SELECT r.target_id, r.rating, v.name AS rater FROM peer_ratings r JOIN users v ON v.id = r.rater_id ORDER BY r.rating, v.name_key')
+      .all();
+    const byTarget = new Map();
+    for (const v of votes) {
+      if (!byTarget.has(v.target_id)) byTarget.set(v.target_id, []);
+      byTarget.get(v.target_id).push({ rater: v.rater, rating: v.rating });
+    }
+    res.json(rows.map((r) => ({ ...r, peer_votes: byTarget.get(r.id) || [], elo: Math.round(r.elo), active: !!r.active })));
   });
 
   app.put('/api/admin/users/:id', requireAdmin, (req, res) => {
