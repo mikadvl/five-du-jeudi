@@ -523,7 +523,7 @@ async function viewRate() {
   view.innerHTML = `
     ${backLink('#/profil', 'Profil')}
     <h1>Noter les joueurs</h1>
-    <p class="muted">Donne à chacun une note de 1 à 10. Le niveau d'un joueur devient la moyenne arrondie des notes reçues dès ${d.min} notes. Les autres joueurs ne voient pas tes notes ; seuls les organisateurs peuvent les consulter.</p>
+    <p class="muted">Donne à chacun une note de 1 à 10. Le niveau d'un joueur devient la moyenne arrondie des notes reçues dès ${d.min} notes.</p>
     <p class="small muted">${todo ? `${plural(todo, 'joueur')} sans note de ta part.` : 'Tu as noté tout le monde. Tu peux changer une note à tout moment.'}</p>
     ${
       d.players.length
