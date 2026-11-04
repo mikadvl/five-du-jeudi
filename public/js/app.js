@@ -771,20 +771,47 @@ const actions = {
   },
   async share() {
     const m = current.match;
-    const list = (t) =>
-      m.confirmed
-        .filter((e) => e.team === t)
-        .map((e) => e.name)
-        .join(', ');
-    const text = `${state.group.name} – ${dayLong(m.startsAt)} à ${hour(m.startsAt)}${m.location ? `, ${m.location}` : ''}\n\n${m.teamNames.A} : ${list('A')}\n${m.teamNames.B} : ${list('B')}\n\n${location.origin}/#/match/${m.id}`;
-    if (navigator.share) {
-      try {
-        await navigator.share({ text });
-      } catch {
-        /* partage annulé */
+    const team = (t) => m.confirmed.filter((e) => e.team === t);
+    const list = (t) => team(t).map((e) => e.name).join(', ');
+    const url = `${location.origin}/#/match/${m.id}`;
+    const text = `${state.group.name} – ${dayLong(m.startsAt)} à ${hour(m.startsAt)}${m.location ? `, ${m.location}` : ''}\n\n${m.teamNames.A} : ${list('A')}\n${m.teamNames.B} : ${list('B')}\n\n${url}`;
+    toast("Préparation de l'image…");
+    let file = null;
+    try {
+      const { renderLineup } = await import('/js/lineup.js');
+      const blob = await renderLineup({
+        groupName: state.group.name,
+        dateLabel: dayLong(m.startsAt),
+        timeLabel: hour(m.startsAt),
+        location: m.location,
+        teamNames: m.teamNames,
+        teamA: team('A').map((e) => ({ name: e.name, isGuest: e.isGuest })),
+        teamB: team('B').map((e) => ({ name: e.name, isGuest: e.isGuest })),
+        url,
+      });
+      if (blob) file = new File([blob], `compo-${fmt(m.startsAt, { day: '2-digit', month: '2-digit' }).replace('/', '-')}.png`, { type: 'image/png' });
+    } catch {
+      /* image indisponible : partage texte seul */
+    }
+    toastEl.hidden = true;
+    try {
+      if (file && navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], text });
+        return;
       }
-    } else {
-      window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
+      if (file) {
+        // Ordinateur : on télécharge l'image et on ouvre WhatsApp avec le texte
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(file);
+        a.download = file.name;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+        toast('Image téléchargée');
+      }
+      if (navigator.share) await navigator.share({ text });
+      else window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
+    } catch {
+      /* partage annulé */
     }
   },
   async 'push-enable'() {
