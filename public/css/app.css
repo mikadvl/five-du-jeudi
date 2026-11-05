@@ -375,12 +375,12 @@ textarea.input { min-height: 88px; resize: vertical; }
 .tabbar {
   position: fixed; z-index: 10; left: 50%; transform: translateX(-50%);
   bottom: calc(14px + env(safe-area-inset-bottom)); width: min(520px, calc(100% - 32px)); height: var(--tabbar-h);
-  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: center; padding: 0 8px;
+  display: flex; justify-content: space-around; align-items: center; padding: 0 6px;
   background: var(--tabbar-bg); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
   border-radius: 999px; box-shadow: 0 10px 30px rgba(16, 24, 20, 0.14);
 }
 .tabbar[hidden] { display: none; }
-.tabbar a { justify-self: center; display: flex; align-items: center; justify-content: center; gap: 6px; min-width: 44px; height: 44px; padding: 0 10px; border-radius: 999px; color: var(--muted); text-decoration: none; font-weight: 600; font-size: 14px; }
+.tabbar a { flex: none; display: flex; align-items: center; justify-content: center; gap: 6px; min-width: 44px; height: 44px; padding: 0 10px; border-radius: 999px; color: var(--muted); text-decoration: none; font-weight: 600; font-size: 14px; }
 .tabbar svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; flex: none; }
 .tabbar a span { display: none; }
 .tabbar a[aria-current='page'] { background: var(--solid); color: var(--on-solid); padding: 0 14px; }

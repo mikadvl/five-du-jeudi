@@ -148,7 +148,7 @@ const routes = [
   [/^\/connexion$/, viewLogin, null],
   [/^\/inscription$/, viewRegister, null],
   [/^\/bienvenue$/, viewWelcome, 'home'],
-  [/^\/noter$/, viewRate, 'profil'],
+  [/^\/noter$/, viewRate, 'noter'],
 ];
 
 async function render() {
@@ -572,8 +572,7 @@ async function viewRate() {
   const avg = (r) => fmtNote(ATTRS.reduce((t, [k]) => t + r[k], 0) / ATTRS.length);
   const todo = d.players.filter((p) => !p.myRatings).length;
   view.innerHTML = `
-    ${backLink('#/profil', 'Profil')}
-    <h1>Noter les joueurs</h1>
+    <h1 style="padding-top:12px">Noter les joueurs</h1>
     <p class="muted">Note chaque joueur sur 6 qualités, de 1 à 10. Sa carte affiche la moyenne des notes reçues dès ${d.min} votants, et l'app s'en sert pour répartir attaquants, défenseurs et techniciens des deux côtés.</p>
     <p class="small muted">${todo ? `${plural(todo, 'joueur')} à noter.` : 'Tu as noté tout le monde. Tu peux changer tes notes à tout moment.'}</p>
     ${
@@ -1536,7 +1535,7 @@ async function viewProfile() {
     : '';
   view.innerHTML = `
     <div class="player-head" style="padding-top:12px"><span class="av av-b av-lg" aria-hidden="true">${esc(initials(me.name))}</span><h1>${esc(me.name)}</h1></div>
-    <div class="btn-row"><a class="btn" href="#/joueur/${me.id}">Mes stats</a><a class="btn" href="#/noter">Noter les joueurs</a>${me.role === 'admin' ? '<a class="btn btn-dark" href="#/admin">Organisation</a>' : ''}</div>
+    <div class="btn-row"><a class="btn" href="#/joueur/${me.id}">Mes stats</a>${me.role === 'admin' ? '<a class="btn btn-dark" href="#/admin">Organisation</a>' : ''}</div>
     ${await notificationsCardHtml()}${install}
     <section class="card stack">
       <h2>Apparence</h2>
