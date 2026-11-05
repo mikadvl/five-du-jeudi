@@ -503,7 +503,7 @@ function adminToolsHtml(m) {
 const PEER_MIN = 3;
 const ATTRS = [
   ['att', 'ATT', 'Attaque', 'Finition, frappe, sens du but'],
-  ['def', 'DEF', 'Défense', 'Placement, tacles, récupération'],
+  ['def', 'DEF', 'Défense', 'Placement, interceptions, récupération'],
   ['tec', 'TEC', 'Technique', 'Contrôle, passes, dribbles'],
   ['vit', 'VIT', 'Vitesse', 'Accélération, vitesse de pointe'],
   ['end', 'END', 'Endurance', 'Tient le rythme jusqu’au bout'],
