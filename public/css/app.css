@@ -344,7 +344,7 @@ textarea.input { min-height: 88px; resize: vertical; }
 .peer-row.is-off { background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--danger); font-weight: 600; }
 
 /* ---------- Terrain (compo) ---------- */
-.pitch { position: relative; aspect-ratio: 960 / 1550; border-radius: 18px; overflow: hidden;
+.pitch { position: relative; aspect-ratio: 960 / 1700; border-radius: 18px; overflow: hidden;
   background: repeating-linear-gradient(180deg, #17803f 0 10%, #1a8a45 10% 20%); }
 .pitch ul { list-style: none; margin: 0; padding: 0; }
 .pitch-lines { position: absolute; inset: 0; width: 100%; height: 100%; fill: none; stroke: rgba(255, 255, 255, 0.8); stroke-width: 5; vector-effect: non-scaling-stroke; }
@@ -354,7 +354,7 @@ textarea.input { min-height: 88px; resize: vertical; }
 .pitch-player .av-b { background: #101814; color: #fff; }
 .pitch-player .av-a { background: #ff6b1a; color: #3a1600; }
 .pitch-player .av.is-me { box-shadow: 0 0 0 2.5px #fff, 0 0 0 5px #ffd23f, 0 3px 8px rgba(0, 0, 0, 0.3); }
-.pitch-name { max-width: 76px; padding: 1px 7px; border-radius: 999px; background: rgba(16, 24, 20, 0.82); color: #fff; font-size: 11.5px; font-weight: 600; line-height: 1.5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pitch-name { max-width: 80px; display: flex; flex-direction: column; align-items: center; padding: 1px 7px 2px; border-radius: 10px; background: rgba(16, 24, 20, 0.82); color: #fff; font-size: 11.5px; font-weight: 600; line-height: 1.5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ---------- Match en direct ---------- */
 .live { display: flex; flex-direction: column; gap: 14px; border: 2px solid var(--loss); }
@@ -372,6 +372,13 @@ textarea.input { min-height: 88px; resize: vertical; }
 .live-goals .grow { flex: 1; min-width: 0; }
 .shortcut-list li { display: flex; align-items: center; gap: 10px; padding: 10px 0; }
 .shortcut-list .url { display: block; margin-top: 4px; font-size: 11.5px; color: var(--muted); word-break: break-all; }
+
+/* Note /100 et profil sur le terrain */
+.pitch-player .ovr { position: absolute; left: -8px; top: -6px; min-width: 22px; height: 18px; padding: 0 4px; border-radius: 999px; border: 1.5px solid #fff; display: grid; place-items: center; font-size: 10px; font-weight: 800; color: #1f1607; line-height: 1; }
+.ovr-gold { background: #e2bf5c; }
+.ovr-silver { background: #cfd5da; }
+.ovr-bronze { background: #d39a66; }
+.pitch-name small { font-size: 9.5px; font-weight: 500; opacity: 0.75; line-height: 1.25; }
 
 /* ---------- Bienvenue ---------- */
 .step { display: flex; gap: 14px; align-items: flex-start; }

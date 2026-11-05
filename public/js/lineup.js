@@ -1,8 +1,8 @@
 // Image de la compo : terrain de five vu de dessus, une équipe par moitié, prête à partager.
 
 const W = 1080;
-const H = 1680;
-const PITCH = { x: 60, y: 320, w: 960, h: 1200 };
+const H = 1900;
+const PITCH = { x: 60, y: 320, w: 960, h: 1420 };
 
 const COLORS = {
   bg: '#101814',
@@ -130,15 +130,42 @@ function drawPlayer(ctx, cx, cy, p, team) {
     ctx.fillText('+1', cx + 50, cy - r + 10);
   }
 
-  // Nom dans une pastille lisible sur l'herbe
+  // Note /100 en pastille (couleur or / argent / bronze), en haut à gauche du rond
+  if (Number.isFinite(p.overall)) {
+    const tier = p.overall >= 75 ? '#e2bf5c' : p.overall >= 60 ? '#cfd5da' : '#d39a66';
+    ctx.beginPath();
+    ctx.arc(cx - r + 6, cy - r + 8, 25, 0, Math.PI * 2);
+    ctx.fillStyle = tier;
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#ffffff';
+    ctx.stroke();
+    ctx.fillStyle = '#1f1607';
+    ctx.font = "800 24px Bricolage, 'Helvetica Neue', Arial, sans-serif";
+    ctx.fillText(String(p.overall), cx - r + 6, cy - r + 9);
+  }
+
+  // Nom (+ profil en petit) dans une pastille lisible sur l'herbe
   ctx.font = "600 30px Geist, 'Helvetica Neue', Arial, sans-serif";
-  const label = fitText(ctx, p.name.split(' ')[0], 230);
-  const tw = ctx.measureText(label).width + 32;
-  roundRect(ctx, cx - tw / 2, cy + r + 12, tw, 46, 23);
+  const label = fitText(ctx, p.name.split(' ')[0], 220);
+  let tw = ctx.measureText(label).width + 32;
+  const hasProfile = !!p.profile;
+  if (hasProfile) {
+    ctx.font = "500 21px Geist, 'Helvetica Neue', Arial, sans-serif";
+    tw = Math.max(tw, ctx.measureText(p.profile).width + 28);
+  }
+  const ph = hasProfile ? 66 : 46;
+  roundRect(ctx, cx - tw / 2, cy + r + 12, tw, ph, 23);
   ctx.fillStyle = 'rgba(16,24,20,0.82)';
   ctx.fill();
   ctx.fillStyle = '#ffffff';
-  ctx.fillText(label, cx, cy + r + 36);
+  ctx.font = "600 30px Geist, 'Helvetica Neue', Arial, sans-serif";
+  ctx.fillText(label, cx, cy + r + (hasProfile ? 32 : 36));
+  if (hasProfile) {
+    ctx.fillStyle = 'rgba(255,255,255,0.72)';
+    ctx.font = "500 21px Geist, 'Helvetica Neue', Arial, sans-serif";
+    ctx.fillText(p.profile, cx, cy + r + 58);
+  }
 }
 
 /**
@@ -181,7 +208,7 @@ export async function renderLineup(data) {
   const padX = 110;
   const usableW = PITCH.w - 2 * padX;
   const first = 110; // centre de la rangée la plus proche du but
-  const last = half - 150; // rangée la plus proche du milieu (laisse la place au nom)
+  const last = half - 170; // rangée la plus proche du milieu (laisse la place au nom et au profil)
   const place = (players, team) => {
     const pos = positions(players.length);
     players.forEach((p, i) => {

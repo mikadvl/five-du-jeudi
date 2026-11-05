@@ -867,6 +867,13 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
     const s = settings();
     const isAdmin = canManage(viewer);
     const entries = activeEntries(m.id);
+    const cards = new Map();
+    const cardOf = (e) => {
+      if (e.guest_name) return { overall: (e.guest_level ?? 5) * 10, profile: null };
+      if (!cards.has(e.user_id)) cards.set(e.user_id, playerCard(e.user_id));
+      const c = cards.get(e.user_id);
+      return { overall: c.overall, profile: c.profile };
+    };
     const dto = (e) => ({
       id: e.id,
       userId: e.user_id,
@@ -876,6 +883,7 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
       team: e.spot === 'confirmed' ? e.team : null,
       goals: e.goals,
       mine: !!viewer && e.user_id === viewer.id,
+      ...cardOf(e),
       ...(isAdmin ? { strength: Math.round(entryStrength(e)), level: e.guest_name ? e.guest_level : e.user_level } : {}),
     });
     const confirmedE = entries.filter((e) => e.spot === 'confirmed');

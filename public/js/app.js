@@ -410,21 +410,23 @@ function pitchHtml(A, B, m) {
       .map((e, i) => {
         const [fx, fy] = pos[i];
         const left = 13 + fx * 74;
-        const depth = 8.5 + fy * 30; // % depuis la ligne de but : 3 rangées à 8,5 / 23,5 / 38,5 %
+        const depth = 8 + fy * 30.5; // % depuis la ligne de but : 3 rangées à 8 / 23 / 38,5 %
         const top = team === 'B' ? depth : 100 - depth - 3;
         const me = e.mine && !e.isGuest;
         const badge = e.isGuest ? '<span class="badge">+1</span>' : m.played && e.goals ? `<span class="badge">${e.goals}</span>` : '';
-        const label = `${e.name}${e.isGuest ? `, invité de ${e.hostName}` : ''}${m.played && e.goals ? `, ${plural(e.goals, 'but')}` : ''}`;
+        const label = `${e.name}${e.isGuest ? `, invité de ${e.hostName}` : ''}${Number.isFinite(e.overall) ? `, note ${e.overall}` : ''}${e.profile ? `, ${e.profile}` : ''}${m.played && e.goals ? `, ${plural(e.goals, 'but')}` : ''}`;
         return `<li class="pitch-player" style="left:${left.toFixed(2)}%;top:${top.toFixed(2)}%" aria-label="${esc(label)}">
-          <span class="av ${team === 'A' ? 'av-a' : 'av-b'}${me ? ' is-me' : ''}" aria-hidden="true">${esc(initials(e.name))}${badge}</span>
-          <span class="pitch-name" aria-hidden="true">${me ? 'Toi' : esc(e.name.split(' ')[0])}</span></li>`;
+          <span class="av ${team === 'A' ? 'av-a' : 'av-b'}${me ? ' is-me' : ''}" aria-hidden="true">${esc(initials(e.name))}${badge}${
+            Number.isFinite(e.overall) ? `<span class="ovr ovr-${e.overall >= 75 ? 'gold' : e.overall >= 60 ? 'silver' : 'bronze'}">${e.overall}</span>` : ''
+          }</span>
+          <span class="pitch-name" aria-hidden="true">${me ? 'Toi' : esc(e.name.split(' ')[0])}${e.profile ? `<small>${esc(e.profile)}</small>` : ''}</span></li>`;
       })
       .join('');
   };
   return `<div class="pitch" role="group" aria-label="Compositions sur le terrain">
-    <svg class="pitch-lines" viewBox="0 0 960 1550" aria-hidden="true">
-      <rect x="24" y="24" width="912" height="1502" rx="18"/><line x1="24" y1="775" x2="936" y2="775"/>
-      <circle cx="480" cy="775" r="110"/><path d="M290 24a190 190 0 0 0 380 0M290 1526a190 190 0 0 1 380 0"/>
+    <svg class="pitch-lines" viewBox="0 0 960 1700" aria-hidden="true">
+      <rect x="24" y="24" width="912" height="1652" rx="18"/><line x1="24" y1="850" x2="936" y2="850"/>
+      <circle cx="480" cy="850" r="110"/><path d="M290 24a190 190 0 0 0 380 0M290 1676a190 190 0 0 1 380 0"/>
     </svg>
     <ul aria-label="${esc(m.teamNames.B)}">${place(B, 'B')}</ul>
     <ul aria-label="${esc(m.teamNames.A)}">${place(A, 'A')}</ul>
@@ -907,8 +909,8 @@ const actions = {
         timeLabel: hour(m.startsAt),
         location: m.location,
         teamNames: m.teamNames,
-        teamA: team('A').map((e) => ({ name: e.name, isGuest: e.isGuest })),
-        teamB: team('B').map((e) => ({ name: e.name, isGuest: e.isGuest })),
+        teamA: team('A').map((e) => ({ name: e.name, isGuest: e.isGuest, overall: e.overall, profile: e.profile })),
+        teamB: team('B').map((e) => ({ name: e.name, isGuest: e.isGuest, overall: e.overall, profile: e.profile })),
         prediction: m.played ? undefined : m.teams?.prediction,
         url,
       });
