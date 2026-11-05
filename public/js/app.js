@@ -442,7 +442,7 @@ function playersHtml(m) {
     const p = m.teams?.prediction;
     const showP = !m.played && p !== undefined;
     const unassigned = m.confirmed.filter((e) => !e.team);
-    return `<div class="section-head"><h2>Les équipes</h2><button class="link" data-action="share">Partager</button></div>
+    return `<div class="section-head"><h2>Les équipes</h2><span class="btn-row" style="gap:14px"><button class="link" data-action="glossary">Légende</button><button class="link" data-action="share">Partager</button></span></div>
     <section class="card teams-card">
       <div class="team-head"><span><span class="dot dot-b"></span>${esc(m.teamNames.B)}</span>${showP ? `<span class="num">${100 - p} %</span>` : ''}</div>
       ${pitchHtml(A, B, m)}
@@ -569,6 +569,37 @@ const ATTRS = [
 ];
 const fmtNote = (v) => String(Math.round(v * 10) / 10).replace('.', ',');
 
+const PROFILES = [
+  ['Buteur', "Sa meilleure qualité est l'attaque : finition, frappe, présence devant le but."],
+  ['Défenseur', 'Sa meilleure qualité est la défense : placement, interceptions, récupération.'],
+  ['Technicien', 'Sa meilleure qualité est la technique : contrôle, passes, dribbles.'],
+  ['Rapide', 'Sa meilleure qualité est la vitesse : accélérations, appels, retours.'],
+  ['Box to box', "Sa meilleure qualité est l'endurance : il défend, il attaque, il court partout jusqu'au bout."],
+  ['Puissant', 'Sa meilleure qualité est le physique : duels, protection du ballon, gabarit.'],
+  ['Polyvalent', "Ses 6 qualités sont proches (moins d'un point d'écart) : il dépanne partout."],
+];
+
+function glossarySheet() {
+  openSheet(`<h2 id="sheet-title">Glossaire</h2>
+    <h3>Les profils</h3>
+    <p class="small muted">Calculés automatiquement d'après la meilleure qualité du joueur sur sa carte.</p>
+    <dl class="glossary">${PROFILES.map(([t, d]) => `<div><dt>${esc(t)}</dt><dd>${esc(d)}</dd></div>`).join('')}</dl>
+    <h3 style="margin-top:18px">Les 6 qualités</h3>
+    <p class="small muted">Notées de 1 à 10 par les potes (5 = niveau moyen du groupe), affichées sur 100 sur la carte.</p>
+    <dl class="glossary">${ATTRS.map(([, short, label, hint]) => `<div><dt>${short} · ${label}</dt><dd>${esc(hint)}</dd></div>`).join('')}</dl>
+    <h3 style="margin-top:18px">La note globale</h3>
+    <dl class="glossary">
+      <div><dt>Note /100</dt><dd>Moyenne des 6 qualités ×10. Chaque qualité compte dès 3 votants ; avant, c'est le niveau déclaré à l'inscription.</dd></div>
+      <div><dt><span class="ovr-dot ovr-gold"></span>Or</dt><dd>75 et plus</dd></div>
+      <div><dt><span class="ovr-dot ovr-silver"></span>Argent</dt><dd>De 60 à 74</dd></div>
+      <div><dt><span class="ovr-dot ovr-bronze"></span>Bronze</dt><dd>Moins de 60</dd></div>
+    </dl>
+    <h3 style="margin-top:18px">Pour les équipes</h3>
+    <p class="small muted">L'app équilibre la note globale et répartit l'attaque, la défense et la technique des deux côtés.</p>
+    <div class="actions"><button class="btn btn-dark" data-close>Compris</button></div>`);
+  setTimeout(() => (sheetBox.scrollTop = 0), 60); // le focus sur « Compris » ne doit pas faire défiler en bas
+}
+
 /** Carte façon FUT : note globale /100, profil, 6 critères. */
 function fifaCardHtml(name, card) {
   const tier = card.overall >= 75 ? 'gold' : card.overall >= 60 ? 'silver' : 'bronze';
@@ -583,7 +614,8 @@ function fifaCardHtml(name, card) {
       const a = card.attrs[k];
       return `<div title="${esc(label)}${a.rated ? '' : ' (niveau de départ)'}"><dt>${short}</dt><dd class="${a.rated ? '' : 'is-base'}">${Math.round(a.value * 10)}</dd></div>`;
     }).join('')}</dl>
-    <p class="fut-foot">${rated ? `Moyenne des notes de ${plural(card.raters, 'pote')}` : `En attente de ${PEER_MIN} notes (${card.raters} pour l'instant) : niveau déclaré en attendant`}</p>
+    <div class="fut-foot"><span>${rated ? `Moyenne des notes de ${plural(card.raters, 'pote')}` : `En attente de ${PEER_MIN} notes (${card.raters} pour l'instant) : niveau déclaré en attendant`}</span>
+      <button class="fut-help" data-action="glossary" aria-label="Glossaire des profils et qualités">?</button></div>
   </section>`;
 }
 
@@ -630,7 +662,7 @@ async function viewRate() {
   const avg = (r) => fmtNote(ATTRS.reduce((t, [k]) => t + r[k], 0) / ATTRS.length);
   const todo = d.players.filter((p) => !p.myRatings).length;
   view.innerHTML = `
-    <h1 style="padding-top:12px">Noter les joueurs</h1>
+    <div class="section-head" style="padding-top:12px"><h1>Noter les joueurs</h1><button class="link" data-action="glossary">Glossaire</button></div>
     <p class="muted">Note chaque joueur sur 6 qualités, de 1 à 10. Sa carte affiche la moyenne des notes reçues dès ${d.min} votants, et l'app s'en sert pour répartir attaquants, défenseurs et techniciens des deux côtés.</p>
     <p class="small muted">${todo ? `${plural(todo, 'joueur')} à noter.` : 'Tu as noté tout le monde. Tu peux changer tes notes à tout moment.'}</p>
     ${
@@ -945,6 +977,7 @@ const actions = {
     toast('Rappels activés');
     render();
   },
+  glossary: () => glossarySheet(),
   'rate-player'(el) {
     const p = current.rate?.players.find((x) => x.id === Number(el.dataset.id));
     if (p) rateSheet(p);

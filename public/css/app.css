@@ -333,7 +333,8 @@ textarea.input { min-height: 88px; resize: vertical; }
 .fut-stats dt { font-weight: 700; font-size: 14px; opacity: 0.8; }
 .fut-stats dd { margin: 0; font-family: var(--display); font-weight: 800; font-size: 24px; }
 .fut-stats dd.is-base { opacity: 0.55; }
-.fut-foot { margin-top: 10px; font-size: 12.5px; opacity: 0.75; }
+.fut-foot { margin-top: 10px; font-size: 12.5px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.fut-foot span { opacity: 0.75; }
 
 /* Détail des notes (organisateurs) */
 .peer-table { margin-top: 10px; display: grid; gap: 2px; font-size: 13px; overflow-x: auto; }
@@ -379,6 +380,13 @@ textarea.input { min-height: 88px; resize: vertical; }
 .ovr-silver { background: #cfd5da; }
 .ovr-bronze { background: #d39a66; }
 .pitch-name small { font-size: 9.5px; font-weight: 500; opacity: 0.75; line-height: 1.25; }
+
+/* Glossaire */
+.glossary { margin: 8px 0 0; display: grid; gap: 10px; }
+.glossary dt { font-weight: 700; display: flex; align-items: center; gap: 8px; }
+.glossary dd { margin: 2px 0 0; color: var(--ink-2); font-size: 14.5px; }
+.ovr-dot { width: 14px; height: 14px; border-radius: 50%; display: inline-block; border: 1.5px solid var(--line); }
+.fut-help { flex: none; width: 30px; height: 30px; border-radius: 50%; border: 0; background: rgba(255, 255, 255, 0.5); color: inherit; font-weight: 800; font-size: 15px; cursor: pointer; }
 
 /* ---------- Bienvenue ---------- */
 .step { display: flex; gap: 14px; align-items: flex-start; }
