@@ -107,6 +107,23 @@ La base est migrée automatiquement au démarrage, les données sont conservées
 
 Pour une mise à jour immédiate, clique sur **Run Now** sur la tâche.
 
+### Mise à jour depuis l'app (bouton organisateur)
+
+Profil → Organisation → **Mise à jour de l'app** affiche la version installée et la dernière publiée, avec un bouton **Mettre à jour maintenant**. L'app ne touche jamais à Docker : elle demande à TrueNAS (API JSON-RPC) de télécharger la nouvelle image et de redéployer l'app.
+
+1. **Créer une clé d'API TrueNAS** (de préférence pour un utilisateur dédié, ex. `five-updater`, dont le groupe a uniquement le privilège « Apps » en écriture) : menu utilisateur en haut à droite → **My API Keys** (ou Credentials → Users → l'utilisateur → API Keys) → **Add**, puis copier la clé.
+2. Ajouter dans le YAML de l'app :
+
+   ```yaml
+         - TRUENAS_URL=wss://192.168.10.20/api/current
+         - TRUENAS_API_KEY=la-cle-copiee
+         - TRUENAS_APP_NAME=five
+         - TRUENAS_TLS_INSECURE=1
+   ```
+
+   `wss://` est obligatoire : TrueNAS révoque une clé utilisée sans chiffrement. `TRUENAS_TLS_INSECURE=1` accepte le certificat du NAS quand on l'appelle par son IP (réseau local uniquement).
+3. Enregistrer : le bouton est actif.
+
 ## Sauvegarde
 
 Tout tient dans `/mnt/TANK_VAULT/APPS/FIVE/five.db` (SQLite). Une tâche de snapshot ZFS sur le dataset suffit. Ne supprime pas ce fichier : il contient aussi les clés des notifications push.

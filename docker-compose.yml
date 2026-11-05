@@ -20,6 +20,11 @@ services:
       - VAPID_SUBJECT=mailto:toi@example.com
       # Code d'invitation de départ, à remplacer dans TrueNAS (modifiable ensuite dans l'app)
       - INVITE_CODE=change-moi
+      # Bouton « Mettre à jour » pour les organisateurs (facultatif, voir README) :
+      # - TRUENAS_URL=wss://192.168.10.20/api/current
+      # - TRUENAS_API_KEY=cle-api-truenas
+      # - TRUENAS_APP_NAME=five
+      # - TRUENAS_TLS_INSECURE=1
       # Rappels par email (facultatif) :
       # - SMTP_HOST=ssl0.ovh.net
       # - SMTP_PORT=465

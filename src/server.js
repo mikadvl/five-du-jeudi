@@ -19,6 +19,7 @@ import {
   purgeExpiredSessions,
 } from './auth.js';
 import { toLocalInput } from './time.js';
+import { versionInfo, triggerUpdate } from './updater.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
@@ -115,7 +116,7 @@ export function createApp({ db, service, notifier, trustProxy = true }) {
       'Referrer-Policy': 'same-origin',
       'X-Frame-Options': 'DENY',
       'Content-Security-Policy':
-        "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; font-src 'self'; manifest-src 'self'; worker-src 'self'; frame-ancestors 'none'",
+        "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; font-src 'self'; manifest-src 'self'; worker-src 'self'; frame-ancestors 'none'",
     });
     req.user = userFromToken(db, parseCookies(req.headers.cookie)[SESSION_COOKIE]);
     next();
@@ -136,7 +137,7 @@ export function createApp({ db, service, notifier, trustProxy = true }) {
   const matchDto = (req, id) => service.serializeMatch(service.requireMatch(id), req.user);
 
   // ---------- Santé ----------
-  app.get('/healthz', (req, res) => res.json({ ok: true }));
+  app.get('/healthz', (req, res) => res.json({ ok: true, version: process.env.APP_VERSION || 'dev' }));
 
   // ---------- Session ----------
   app.get('/api/me', (req, res) => {
@@ -355,6 +356,15 @@ export function createApp({ db, service, notifier, trustProxy = true }) {
     setSettings(db, out);
     service.runReminders();
     res.json(settingsDto(getSettings(db)));
+  });
+
+  app.get('/api/admin/version', requireAdmin, async (req, res) => res.json(await versionInfo()));
+  app.post('/api/admin/update', requireAdmin, async (req, res) => {
+    const job = await triggerUpdate().catch((err) => {
+      throw new HttpError(502, err.message);
+    });
+    console.log(`[update] mise à jour lancée par ${req.user.name} (job TrueNAS ${job})`);
+    res.status(202).json({ ok: true, job });
   });
 
   app.get('/api/admin/users', requireAdmin, (req, res) => {

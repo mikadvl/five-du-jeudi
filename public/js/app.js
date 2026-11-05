@@ -989,6 +989,19 @@ const actions = {
     applyTheme(el.dataset.theme);
     render();
   },
+  async 'run-update'() {
+    const ok = await confirmSheet({
+      title: "Mettre à jour l'app ?",
+      text: "TrueNAS télécharge la dernière version et redémarre l'app. Elle sera indisponible une minute environ, les données sont conservées.",
+      confirm: 'Mettre à jour',
+    });
+    if (!ok) return;
+    const v = await api('GET', '/api/admin/version');
+    await api('POST', '/api/admin/update');
+    const box = document.getElementById('update-card');
+    if (box) box.innerHTML = '<h2>Mise à jour en cours…</h2><p class="muted">Téléchargement de la nouvelle version puis redémarrage. La page se rechargera toute seule.</p>';
+    waitForRestart(v.current.sha);
+  },
   async logout() {
     await disablePush().catch(() => {});
     await api('POST', '/api/auth/logout');
@@ -1631,6 +1644,11 @@ async function viewAdmin() {
       <button class="btn btn-primary btn-block" type="submit">Enregistrer les réglages</button>
     </form>
 
+    <section class="card stack" id="update-card">
+      <h2>Mise à jour de l'app</h2>
+      <p class="muted">Vérification de la version…</p>
+    </section>
+
     <section class="card stack">
       <h2>Match hors créneau</h2>
       <p class="muted">Un match en plus du jeudi habituel. Tout le monde est prévenu à la création.</p>
@@ -1647,6 +1665,56 @@ async function viewAdmin() {
         ${ICON.chevron}</button></li>`,
       )
       .join('')}</ul>`;
+  loadUpdateCard();
+}
+
+// ---------- Mise à jour ----------
+async function loadUpdateCard() {
+  const box = document.getElementById('update-card');
+  if (!box) return;
+  let v;
+  try {
+    v = await api('GET', '/api/admin/version');
+  } catch {
+    box.querySelector('p').textContent = 'Impossible de vérifier la version.';
+    return;
+  }
+  const when = (iso) => (iso ? ` du ${fmt(iso, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}` : '');
+  let html = `<h2>Mise à jour de l'app</h2>
+    <p class="small muted">Version installée : <strong>${esc(v.current.short)}</strong>${esc(when(v.current.builtAt))}</p>`;
+  if (v.latest) html += `<p class="small muted">Dernière version : <strong>${esc(v.latest.short)}</strong>${esc(when(v.latest.date))}<br>${esc(v.latest.message)}</p>`;
+  else if (v.error) html += `<p class="small muted">Dernière version inconnue (${esc(v.error)}).</p>`;
+  if (v.upToDate) html += '<p><span class="chip chip-open">À jour</span></p>';
+  if (!v.configured) {
+    html += `<p class="small muted">Pour mettre à jour d'ici, ajoute une clé d'API TrueNAS dans la config de l'app (voir le README, section « Mise à jour depuis l'app »).</p>`;
+  } else if (!v.upToDate) {
+    html += '<button class="btn btn-dark btn-block" data-action="run-update">Mettre à jour maintenant</button>';
+  } else {
+    html += '<button class="link" data-action="run-update">Réinstaller quand même</button>';
+  }
+  box.innerHTML = html;
+}
+
+async function waitForRestart(oldVersion) {
+  const box = document.getElementById('update-card');
+  const started = Date.now();
+  let sawDown = false;
+  while (Date.now() - started < 5 * 60e3) {
+    await new Promise((r) => setTimeout(r, 4000));
+    try {
+      const h = await fetch('/healthz', { cache: 'no-store' }).then((r) => r.json());
+      if (h.version !== oldVersion || sawDown) {
+        if (box) box.innerHTML = '<h2>Mise à jour terminée</h2><p class="muted">Rechargement…</p>';
+        const reg = await navigator.serviceWorker?.getRegistration();
+        await reg?.update().catch(() => {});
+        setTimeout(() => location.reload(), 1500);
+        return;
+      }
+    } catch {
+      sawDown = true; // l'app redémarre
+    }
+  }
+  if (box) box.innerHTML = "<h2>Mise à jour</h2><p class=\"muted\">Toujours en cours ou bloquée. Vérifie l'app dans TrueNAS.</p>";
 }
 
 // ---------- Connexion / inscription ----------

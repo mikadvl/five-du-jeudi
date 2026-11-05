@@ -156,3 +156,25 @@ test('détail des notes avec votants : organisateurs uniquement', async () => {
     server.close();
   }
 });
+
+test('mise à jour depuis l’app : réservée aux organisateurs, refusée si non configurée', async () => {
+  delete process.env.TRUENAS_URL;
+  delete process.env.TRUENAS_API_KEY;
+  const { server, client, code } = await boot();
+  try {
+    const orga = client();
+    const joueur = client();
+    await orga('POST', '/api/auth/register', { name: 'Orga', password: 'secret1', inviteCode: code });
+    await joueur('POST', '/api/auth/register', { name: 'Joueur', password: 'secret1', inviteCode: code });
+    assert.equal((await joueur('GET', '/api/admin/version')).status, 403);
+    assert.equal((await joueur('POST', '/api/admin/update')).status, 403);
+    const v = (await orga('GET', '/api/admin/version')).body;
+    assert.equal(v.configured, false);
+    assert.equal(v.current.sha, 'dev');
+    const u = await orga('POST', '/api/admin/update');
+    assert.equal(u.status, 502);
+    assert.match(u.body.error, /non configurée/);
+  } finally {
+    server.close();
+  }
+});
