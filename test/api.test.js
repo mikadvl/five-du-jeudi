@@ -178,3 +178,33 @@ test('mise à jour depuis l’app : réservée aux organisateurs, refusée si no
     server.close();
   }
 });
+
+test('Raccourcis : lien personnel pour marquer depuis la montre', async () => {
+  const { server, client, code, db } = await boot();
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const orga = client();
+    const joueur = client();
+    await orga('POST', '/api/auth/register', { name: 'Orga', password: 'secret1', inviteCode: code });
+    await joueur('POST', '/api/auth/register', { name: 'Joueur', password: 'secret1', inviteCode: code });
+    assert.equal((await joueur('POST', '/api/me/shortcut')).status, 403);
+    const { token } = (await orga('POST', '/api/me/shortcut')).body;
+    const post = (path) => fetch(`${base}/hook/${token}${path}`, { method: 'POST' }).then(async (r) => [r.status, await r.text()]);
+    assert.deepEqual(await post('/goal/a'), [409, 'Aucun match en cours']);
+    // match en cours avec équipes faites
+    const start = new Date(Date.now() - 10 * 60e3);
+    const r = db.prepare("INSERT INTO matches (starts_at, location, capacity, teams_at) VALUES (?, 'Five', 10, ?)").run(start.toISOString(), start.toISOString());
+    const [s1, t1] = await post('/goal/a');
+    assert.equal(s1, 200);
+    assert.equal(t1, '⚽ Chasubles 1 – 0 Sans chasuble');
+    assert.equal((await post('/goal/b'))[1], '⚽ Chasubles 1 – 1 Sans chasuble');
+    assert.equal((await post('/undo'))[1], 'Dernier but annulé. Chasubles 1 – 0 Sans chasuble');
+    assert.equal(await fetch(`${base}/hook/${token}/score`).then((x) => x.text()), 'Chasubles 1 – 0 Sans chasuble');
+    assert.equal((await fetch(`${base}/hook/mauvais/goal/a`, { method: 'POST' })).status, 403);
+    await orga('DELETE', '/api/me/shortcut');
+    assert.equal((await post('/goal/a'))[0], 403);
+    assert.ok(r.lastInsertRowid);
+  } finally {
+    server.close();
+  }
+});

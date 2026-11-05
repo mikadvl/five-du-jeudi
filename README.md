@@ -124,6 +124,12 @@ Profil → Organisation → **Mise à jour de l'app** affiche la version install
    `wss://` est obligatoire : TrueNAS révoque une clé utilisée sans chiffrement. `TRUENAS_TLS_INSECURE=1` accepte le certificat du NAS quand on l'appelle par son IP (réseau local uniquement).
 3. Enregistrer : le bouton est actif.
 
+## Match en direct et Apple Watch
+
+Pendant le match (de 30 min avant à 4 h après le coup d'envoi, équipes faites), la page du match affiche le score **en direct**. Organisateurs et capitaines ajoutent les buts (« +1 Chasubles »), choisissent le buteur, annulent le dernier but, puis **Terminer le match** enregistre le score et les buteurs. Chaque but envoie une notif à ceux qui jouent ; sur iPhone, elle s'affiche aussi sur l'Apple Watch.
+
+**Marquer depuis la montre** : Profil → Apple Watch → *Créer mon lien pour Raccourcis*. L'app affiche 4 liens personnels (but équipe A, but équipe B, annuler, score) et le pas-à-pas pour créer les raccourcis dans l'app Raccourcis d'Apple avec « Afficher sur l'Apple Watch ». Les réponses sont du texte (« ⚽ Chasubles 3 – 2 Sans chasuble ») que la montre affiche ou lit. Sans iPhone à proximité, la montre doit avoir la 4G ou un Wi-Fi connu. Le lien se révoque ou se recrée à tout moment.
+
 ## Sauvegarde
 
 Tout tient dans `/mnt/TANK_VAULT/APPS/FIVE/five.db` (SQLite). Une tâche de snapshot ZFS sur le dataset suffit. Ne supprime pas ce fichier : il contient aussi les clés des notifications push.

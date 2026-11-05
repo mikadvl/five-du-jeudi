@@ -374,3 +374,34 @@ test('équilibrage : attaquants et défenseurs répartis des deux côtés', () =
     assert.equal(attA, 1, `compo déséquilibrée : ${r.A.join(',')}`);
   }
 });
+
+test('match en direct : buts, annulation, buteur, fin du match = résultat', async () => {
+  const { svc, addUser, clock, sent, flush } = setup();
+  const orga = addUser('Mika', 5, 'admin');
+  const ps = Array.from({ length: 4 }, (_, i) => addUser(`L${i}`));
+  const m = matchIn(svc);
+  ps.forEach((p) => svc.join(m.id, p));
+  svc.generateTeams(m.id);
+  assert.throws(() => svc.addGoal(null, orga, { team: 'A' }), /Aucun match en cours/);
+  clock.now = new Date('2026-11-05T19:20:00Z'); // 20 min après le coup d'envoi (20h Paris)
+  assert.equal(svc.liveMatch().id, m.id);
+  await flush();
+  sent.length = 0;
+  svc.addGoal(null, orga, { team: 'A' });
+  svc.addGoal(null, orga, { team: 'B' });
+  const { state } = svc.addGoal(null, orga, { team: 'A' });
+  assert.equal(`${state.scoreA}-${state.scoreB}`, '2-1');
+  await flush();
+  assert.equal(sent.at(-1).title, '⚽ Chasubles 2 – 1 Sans chasuble');
+  assert.equal(sent.at(-1).pushOnly, true);
+  const after = svc.removeGoal(null, null).state;
+  assert.equal(`${after.scoreA}-${after.scoreB}`, '1-1');
+  const dto = svc.serializeMatch(svc.getMatch(m.id), orga);
+  const scorerA = dto.confirmed.find((e) => e.team === 'A');
+  svc.setGoalScorer(dto.live.goals[0].id, scorerA.id);
+  svc.finishLive(m.id);
+  const done = svc.getMatch(m.id);
+  assert.equal(`${done.score_a}-${done.score_b}`, '1-1');
+  assert.equal(svc.serializeMatch(done, orga).confirmed.find((e) => e.id === scorerA.id).goals, 1);
+  assert.equal(svc.serializeMatch(done, orga).live, null);
+});

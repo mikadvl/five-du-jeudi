@@ -134,6 +134,23 @@ const MIGRATIONS = [
     FROM peer_ratings p CROSS JOIN (SELECT 'att' AS attr UNION ALL SELECT 'def' UNION ALL SELECT 'tec'
       UNION ALL SELECT 'vit' UNION ALL SELECT 'end' UNION ALL SELECT 'phy') a;
   `,
+  // v5 : match en direct (buts au fil de l'eau) et jetons pour les Raccourcis (Apple Watch)
+  `
+  CREATE TABLE match_goals (
+    id INTEGER PRIMARY KEY,
+    match_id INTEGER NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+    team TEXT NOT NULL CHECK (team IN ('A', 'B')),
+    entry_id INTEGER REFERENCES entries(id) ON DELETE SET NULL,
+    created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+  );
+  CREATE INDEX ix_goals_match ON match_goals(match_id, id);
+  CREATE TABLE api_tokens (
+    token_hash TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+  );
+  `,
 ];
 
 export const DEFAULT_SETTINGS = {

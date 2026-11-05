@@ -660,6 +660,98 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
     });
   }
 
+  // ---------- Match en direct ----------
+  /** Un match est « en direct » de 30 min avant le coup d'envoi à 4 h après, équipes faites, score pas encore saisi. */
+  function isLive(m) {
+    if (!m || m.cancelled || isPlayed(m) || !m.teams_at) return false;
+    const t = new Date(m.starts_at).getTime();
+    const now = clock().getTime();
+    return now >= t - 30 * 60e3 && now <= t + 4 * H;
+  }
+
+  function liveMatch() {
+    const rows = db.prepare('SELECT * FROM matches WHERE cancelled = 0 AND score_a IS NULL AND teams_at IS NOT NULL ORDER BY starts_at').all();
+    return rows.find(isLive) || null;
+  }
+
+  function liveState(m) {
+    const goals = db
+      .prepare(
+        `SELECT g.id, g.team, g.entry_id, g.created_at, COALESCE(e.guest_name, u.name) AS scorer
+         FROM match_goals g LEFT JOIN entries e ON e.id = g.entry_id LEFT JOIN users u ON u.id = e.user_id
+         WHERE g.match_id = ? ORDER BY g.id`,
+      )
+      .all(m.id);
+    return {
+      scoreA: goals.filter((g) => g.team === 'A').length,
+      scoreB: goals.filter((g) => g.team === 'B').length,
+      goals: goals.map((g) => ({ id: g.id, team: g.team, entryId: g.entry_id, scorer: g.scorer || null, at: g.created_at })),
+    };
+  }
+
+  const scoreLine = (m, st) => `${teamName('A')} ${st.scoreA} – ${st.scoreB} ${teamName('B')}`;
+
+  function notifyGoal(m, st, goal) {
+    const ids = activeEntries(m.id).filter((e) => e.spot === 'confirmed').map((e) => e.user_id);
+    const staff = db.prepare("SELECT id FROM users WHERE active = 1 AND role IN ('admin', 'captain')").all().map((u) => u.id);
+    fire([...ids, ...staff], {
+      title: `⚽ ${scoreLine(m, st)}`,
+      body: goal ? `But pour ${teamName(goal.team)}${goal.scorer ? ` : ${goal.scorer}` : ''}` : 'Dernier but annulé',
+      url: `/#/match/${m.id}`,
+      tag: `live-${m.id}`,
+      pushOnly: true,
+    });
+  }
+
+  function addGoal(matchId, actor, { team, entryId = null } = {}) {
+    const m = matchId ? requireMatch(matchId) : liveMatch();
+    if (!m) throw conflict('Aucun match en cours');
+    if (!isLive(m)) throw conflict("Le match n'est pas en cours");
+    if (!['A', 'B'].includes(team)) throw bad('Équipe invalide');
+    let entry = null;
+    if (entryId) {
+      entry = db.prepare("SELECT * FROM entries WHERE id = ? AND match_id = ? AND state = 'active' AND spot = 'confirmed'").get(Number(entryId), m.id);
+      if (!entry) throw bad('Buteur inconnu dans ce match');
+    }
+    const r = db.prepare('INSERT INTO match_goals (match_id, team, entry_id, created_by) VALUES (?, ?, ?, ?)').run(m.id, team, entry?.id ?? null, actor.id);
+    const st = liveState(m);
+    notifyGoal(m, st, st.goals.find((g) => g.id === Number(r.lastInsertRowid)));
+    return { match: m, state: st };
+  }
+
+  function setGoalScorer(goalId, entryId) {
+    const g = db.prepare('SELECT * FROM match_goals WHERE id = ?').get(Number(goalId));
+    if (!g) throw new HttpError(404, 'But introuvable');
+    if (entryId) {
+      const e = db.prepare("SELECT id FROM entries WHERE id = ? AND match_id = ? AND state = 'active'").get(Number(entryId), g.match_id);
+      if (!e) throw bad('Buteur inconnu dans ce match');
+    }
+    db.prepare('UPDATE match_goals SET entry_id = ? WHERE id = ?').run(entryId ? Number(entryId) : null, g.id);
+    return requireMatch(g.match_id);
+  }
+
+  function removeGoal(matchId, goalId) {
+    const m = matchId ? requireMatch(matchId) : liveMatch();
+    if (!m) throw conflict('Aucun match en cours');
+    const g = goalId
+      ? db.prepare('SELECT * FROM match_goals WHERE id = ? AND match_id = ?').get(Number(goalId), m.id)
+      : db.prepare('SELECT * FROM match_goals WHERE match_id = ? ORDER BY id DESC LIMIT 1').get(m.id);
+    if (!g) throw conflict('Aucun but à annuler');
+    db.prepare('DELETE FROM match_goals WHERE id = ?').run(g.id);
+    const st = liveState(m);
+    notifyGoal(m, st, null);
+    return { match: m, state: st };
+  }
+
+  /** Fin du match : le score et les buteurs du direct deviennent le résultat officiel. */
+  function finishLive(matchId) {
+    const m = requireMatch(matchId);
+    const st = liveState(m);
+    const goals = {};
+    for (const g of st.goals) if (g.entryId) goals[g.entryId] = (goals[g.entryId] || 0) + 1;
+    return saveResult(m.id, { scoreA: st.scoreA, scoreB: st.scoreB, goals });
+  }
+
   // ---------- Résultats, Elo, MVP ----------
   function saveResult(matchId, { scoreA, scoreB, goals = {} }) {
     const m = requireMatch(matchId);
@@ -829,6 +921,7 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
         : null,
       teams,
       mvp,
+      live: isLive(m) ? liveState(m) : null,
       canJoin: !m.cancelled && !played && (!started || isAdmin),
       canManage: isAdmin,
     };
@@ -1105,6 +1198,13 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
     deleteUser,
     notifyRole,
     notifyNewAccount,
+    liveMatch,
+    liveState,
+    addGoal,
+    removeGoal,
+    setGoalScorer,
+    finishLive,
+    scoreLine,
     ratePlayer,
     ratingsFor,
     unratedCount,

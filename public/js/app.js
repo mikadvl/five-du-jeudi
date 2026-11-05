@@ -239,7 +239,63 @@ async function showMatch(m) {
 }
 
 function matchHtml(m) {
-  return [heroHtml(m), m.notes ? `<p class="card note">${esc(m.notes)}</p>` : '', statusHtml(m), m.played ? scoreHtml(m) : '', playersHtml(m), waitlistHtml(m), mvpHtml(m), m.canManage ? adminToolsHtml(m) : ''].join('');
+  scheduleLiveRefresh(m);
+  return [heroHtml(m), liveHtml(m), m.notes ? `<p class="card note">${esc(m.notes)}</p>` : '', statusHtml(m), m.played ? scoreHtml(m) : '', playersHtml(m), waitlistHtml(m), mvpHtml(m), m.canManage ? adminToolsHtml(m) : ''].join('');
+}
+
+// ---------- Match en direct ----------
+let liveTimer = null;
+function scheduleLiveRefresh(m) {
+  clearTimeout(liveTimer);
+  if (!m.live) return;
+  liveTimer = setTimeout(async () => {
+    if (document.visibilityState !== 'visible' || !sheetEl.hidden || current.match?.id !== m.id) return scheduleLiveRefresh(m);
+    try {
+      await showMatch(await api('GET', `/api/matches/${m.id}`));
+    } catch {
+      scheduleLiveRefresh(m);
+    }
+  }, 15000);
+}
+
+function liveHtml(m) {
+  const L = m.live;
+  if (!L) return '';
+  const byId = new Map(m.confirmed.map((e) => [e.id, e]));
+  const goals = [...L.goals].reverse();
+  const mgr = m.canManage;
+  return `<section class="card live" aria-label="Match en direct">
+    <div class="live-head"><span class="live-dot" aria-hidden="true"></span><strong>En direct</strong><span class="small muted">mise à jour toutes les 15 s</span></div>
+    ${scoreLine(L.scoreA, L.scoreB, m.teamNames)}
+    ${
+      mgr
+        ? `<div class="live-buttons">
+      <button class="btn live-a" data-action="live-goal" data-team="A">+1 ${esc(m.teamNames.A)}</button>
+      <button class="btn btn-dark" data-action="live-goal" data-team="B">+1 ${esc(m.teamNames.B)}</button>
+    </div>`
+        : ''
+    }
+    ${
+      goals.length
+        ? `<ol class="live-goals">${goals
+            .map((g) => {
+              const who = g.scorer ? esc(g.scorer) : mgr ? '<button class="link" data-action="live-scorer" data-id="' + g.id + '" data-team="' + g.team + '">Qui a marqué ?</button>' : '<span class="muted">Buteur ?</span>';
+              return `<li><span class="dot ${g.team === 'A' ? 'dot-a' : 'dot-b'}"></span><span class="grow">${who}</span><span class="small muted">${esc(hour(g.at))}</span>${
+                mgr && g.scorer ? `<button class="link small" data-action="live-scorer" data-id="${g.id}" data-team="${g.team}">Modifier</button>` : ''
+              }</li>`;
+            })
+            .join('')}</ol>`
+        : '<p class="small muted">Pas encore de but.</p>'
+    }
+    ${
+      mgr
+        ? `<div class="btn-row">
+      ${L.goals.length ? '<button class="btn btn-small" data-action="live-undo">Annuler le dernier but</button>' : ''}
+      <button class="btn btn-small btn-primary" data-action="live-finish">Terminer le match</button>
+    </div>`
+        : ''
+    }
+  </section>`;
 }
 
 function heroHtml(m) {
@@ -988,6 +1044,65 @@ const actions = {
     applyTheme(el.dataset.theme);
     render();
   },
+  async 'live-goal'(el) {
+    await showMatch(await api('POST', `/api/matches/${current.match.id}/goals`, { team: el.dataset.team }));
+    navigator.vibrate?.(60);
+  },
+  async 'live-undo'() {
+    const m = current.match;
+    const last = m.live.goals.at(-1);
+    await showMatch(await api('DELETE', `/api/matches/${m.id}/goals/${last.id}`));
+    toast('Dernier but annulé');
+  },
+  'live-scorer'(el) {
+    const m = current.match;
+    const team = m.confirmed.filter((e) => e.team === el.dataset.team);
+    openSheet(`<h2 id="sheet-title">Qui a marqué ?</h2>
+      <div class="choices">${team
+        .map((e) => `<button class="btn btn-small" data-action="live-set-scorer" data-goal="${el.dataset.id}" data-entry="${e.id}">${esc(e.name)}</button>`)
+        .join('')}</div>
+      <div class="actions"><button class="btn" data-action="live-set-scorer" data-goal="${el.dataset.id}" data-entry="">Je ne sais pas</button></div>`);
+  },
+  async 'live-set-scorer'(el) {
+    const m = await api('PUT', `/api/goals/${el.dataset.goal}`, { entryId: el.dataset.entry ? Number(el.dataset.entry) : null });
+    closeSheet();
+    await showMatch(m);
+  },
+  async 'live-finish'() {
+    const m = current.match;
+    const ok = await confirmSheet({
+      title: 'Terminer le match ?',
+      text: `Score final : ${esc(m.teamNames.A)} ${m.live.scoreA} – ${m.live.scoreB} ${esc(m.teamNames.B)}. Les buteurs renseignés sont enregistrés, le vote pour l'homme du match s'ouvre.`,
+      confirm: 'Terminer',
+    });
+    if (!ok) return;
+    await showMatch(await api('POST', `/api/matches/${m.id}/finish`));
+    toast('Score enregistré');
+  },
+  async 'shortcut-create'() {
+    const had = document.querySelector('[data-action=shortcut-create]')?.dataset.had === '1';
+    if (had) {
+      const ok = await confirmSheet({ title: 'Recréer le lien ?', text: "L'ancien lien ne marchera plus : il faudra mettre à jour tes raccourcis.", confirm: 'Recréer' });
+      if (!ok) return;
+    }
+    const { token } = await api('POST', '/api/me/shortcut');
+    shortcutSheet(token);
+    loadShortcutCard();
+  },
+  async 'shortcut-revoke'() {
+    const ok = await confirmSheet({ title: 'Désactiver le lien ?', text: 'Tes raccourcis Apple Watch ne marcheront plus.', confirm: 'Désactiver', danger: true });
+    if (!ok) return;
+    await api('DELETE', '/api/me/shortcut');
+    loadShortcutCard();
+  },
+  async 'copy-text'(el) {
+    try {
+      await navigator.clipboard.writeText(el.dataset.text);
+      toast('Copié');
+    } catch {
+      toast('Copie impossible : sélectionne le texte à la main', true);
+    }
+  },
   async 'run-update'() {
     const ok = await confirmSheet({
       title: "Mettre à jour l'app ?",
@@ -1537,6 +1652,7 @@ async function viewProfile() {
     <div class="player-head" style="padding-top:12px"><span class="av av-b av-lg" aria-hidden="true">${esc(initials(me.name))}</span><h1>${esc(me.name)}</h1></div>
     <div class="btn-row"><a class="btn" href="#/joueur/${me.id}">Mes stats</a>${me.role === 'admin' ? '<a class="btn btn-dark" href="#/admin">Organisation</a>' : ''}</div>
     ${await notificationsCardHtml()}${install}
+    ${canManage() ? '<section class="card stack" id="shortcut-card"><h2>Apple Watch</h2><p class="muted">Chargement…</p></section>' : ''}
     <section class="card stack">
       <h2>Apparence</h2>
       <nav class="segmented" aria-label="Thème">${[
@@ -1565,6 +1681,7 @@ async function viewProfile() {
       </form>
     </section>
     <button class="btn btn-danger btn-block" data-action="logout">Me déconnecter</button>`;
+  loadShortcutCard();
 }
 
 // ---------- Thème ----------
@@ -1665,6 +1782,50 @@ async function viewAdmin() {
       )
       .join('')}</ul>`;
   loadUpdateCard();
+}
+
+// ---------- Raccourcis Apple Watch ----------
+async function loadShortcutCard() {
+  const box = document.getElementById('shortcut-card');
+  if (!box) return;
+  const st = await api('GET', '/api/me/shortcut').catch(() => null);
+  if (!st) return;
+  box.innerHTML = `<h2>Apple Watch</h2>
+    <p class="muted">Marque les buts depuis ta montre pendant le match, avec l'app Raccourcis d'Apple : « But Chasubles », « But Sans chasuble », « Annuler le dernier but », « Score ».</p>
+    ${
+      st.active
+        ? `<p class="small muted">Lien actif depuis le ${esc(fmt(st.createdAt, { day: 'numeric', month: 'long' }))}. Pour des raisons de sécurité, il ne s'affiche qu'à la création.</p>
+      <div class="btn-row"><button class="btn btn-small" data-action="shortcut-create" data-had="1">Recréer le lien</button><button class="btn btn-small btn-danger" data-action="shortcut-revoke">Désactiver</button></div>`
+        : '<button class="btn btn-dark btn-block" data-action="shortcut-create">Créer mon lien pour Raccourcis</button>'
+    }`;
+}
+
+function shortcutSheet(token) {
+  const base = `${location.origin}/hook/${token}`;
+  const names = state.group;
+  const items = [
+    [`But ${names.teamA}`, `${base}/goal/a`, 'POST'],
+    [`But ${names.teamB}`, `${base}/goal/b`, 'POST'],
+    ['Annuler le dernier but', `${base}/undo`, 'POST'],
+    ['Score', `${base}/score`, 'GET'],
+  ];
+  openSheet(`<h2 id="sheet-title">Tes raccourcis Apple Watch</h2>
+    <p class="small muted">Copie ces liens maintenant : ils ne seront plus affichés. Ils sont personnels, ne les partage pas.</p>
+    <ul class="list shortcut-list">${items
+      .map(
+        ([label, url, method]) => `<li><div class="grow"><span class="title">${esc(label)}</span><span class="sub">Méthode ${method}</span><code class="url">${esc(url)}</code></div>
+        <button class="btn btn-small" data-action="copy-text" data-text="${esc(url)}">Copier</button></li>`,
+      )
+      .join('')}</ul>
+    <h3 style="margin-top:16px">Créer un raccourci (sur l'iPhone, une fois par lien)</h3>
+    <ol class="howto">
+      <li>App <strong>Raccourcis</strong> → <strong>+</strong> → <strong>Ajouter une action</strong> → « <strong>Obtenir le contenu de l'URL</strong> ».</li>
+      <li>Colle le lien. Touche la flèche de l'action : <strong>Méthode</strong> = la méthode indiquée (POST ou GET).</li>
+      <li>Ajoute l'action « <strong>Afficher le résultat</strong> » (ou « Énoncer le texte » pour l'entendre).</li>
+      <li>Renomme le raccourci (« But ${esc(names.teamA)} »…), puis dans ses réglages (ⓘ) active <strong>Afficher sur l'Apple Watch</strong>.</li>
+    </ol>
+    <p class="small muted">Sur la montre : app Raccourcis, ou une complication sur le cadran, ou « Dis Siri, But ${esc(names.teamA)} ». Sans iPhone à côté, la montre doit avoir la 4G ou un Wi-Fi connu.</p>
+    <div class="actions"><button class="btn btn-dark" data-close>C'est noté</button></div>`);
 }
 
 // ---------- Mise à jour ----------
