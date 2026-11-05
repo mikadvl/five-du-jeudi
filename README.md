@@ -122,10 +122,10 @@ Les clés VAPID du Web Push sont générées au premier démarrage et stockées 
 
 ## Comment sont faites les équipes
 
-1. Chaque joueur a un **niveau** (1 à 10). Il le déclare à l'inscription, puis ce sont **les autres joueurs qui le notent** (Profil → Noter les joueurs ; les autres joueurs ne voient pas les notes, les organisateurs voient le détail avec le nom des votants) : dès 3 notes reçues, son niveau devient la moyenne arrondie de ces notes. Niveau 5 = 1000 points, chaque point de niveau vaut 60 points.
+1. Chaque joueur a une **carte** façon FUT : 6 qualités (attaque, défense, technique, vitesse, endurance, physique) notées de 1 à 10 par les autres joueurs (Profil → Noter les joueurs). Chaque qualité vaut la moyenne des notes reçues dès 3 votants, sinon le niveau déclaré à l'inscription. La note globale (sur 100) et le **niveau** (1 à 10) en découlent. Niveau 5 = 1000 points, chaque point de niveau vaut 60 points. Les organisateurs voient le détail des notes par votant.
 2. Après chaque score saisi, un **Elo** est mis à jour : l'équipe qui gagne prend des points, d'autant plus si elle était donnée perdante et si l'écart est large.
 3. La **force** utilisée pour équilibrer mélange les deux : au début c'est le niveau qui compte, puis l'historique prend le relais (jusqu'à 70 % au bout de 10 matchs). Un +1 compte pour son niveau estimé.
-4. L'algo teste **toutes** les répartitions possibles (462 pour 12 joueurs) et garde celles où l'écart de force est minimal, en pénalisant les binômes qui ont déjà joué ensemble lors des 3 derniers matchs. Il tire au sort parmi les meilleures pour que les compos varient d'une semaine à l'autre.
+4. L'algo teste **toutes** les répartitions possibles (462 pour 12 joueurs) et garde celles où l'écart de force est minimal **et** où l'attaque, la défense et la technique sont réparties des deux côtés, en pénalisant les binômes qui ont déjà joué ensemble lors des 3 derniers matchs. Il tire au sort parmi les meilleures pour que les compos varient d'une semaine à l'autre.
 
 Changer le niveau d'un joueur ou corriger un score recalcule tout l'historique. Les indices sont visibles uniquement par le joueur concerné et les organisateurs ; les autres ne voient que le pronostic global.
 

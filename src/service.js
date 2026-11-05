@@ -16,6 +16,26 @@ const conflict = (msg) => new HttpError(409, msg);
 const H = 3600e3;
 /** Nombre de notes reçues à partir duquel la moyenne des potes remplace le niveau de départ. */
 export const PEER_MIN = 3;
+export const ATTRS = [
+  { key: 'att', short: 'ATT', label: 'Attaque' },
+  { key: 'def', short: 'DEF', label: 'Défense' },
+  { key: 'tec', short: 'TEC', label: 'Technique' },
+  { key: 'vit', short: 'VIT', label: 'Vitesse' },
+  { key: 'end', short: 'END', label: 'Endurance' },
+  { key: 'phy', short: 'PHY', label: 'Physique' },
+];
+// Critères répartis des deux côtés lors de la création des équipes
+const PROFILE_ATTRS = ['att', 'def', 'tec'];
+const PROFILE_LABELS = { att: 'Buteur', def: 'Défenseur', tec: 'Technicien', vit: 'Rapide', end: 'Box to box', phy: 'Puissant' };
+
+/** Profil du joueur d'après ses critères les plus forts. */
+export function profileLabel(attrs) {
+  const vals = ATTRS.map((a) => [a.key, attrs[a.key].value]);
+  const max = Math.max(...vals.map((v) => v[1]));
+  const min = Math.min(...vals.map((v) => v[1]));
+  if (max - min < 1) return 'Polyvalent';
+  return PROFILE_LABELS[vals.find((v) => v[1] === max)[0]];
+}
 
 const intIn = (v, min, max, fallback) => {
   const n = Number.parseInt(v, 10);
@@ -265,20 +285,36 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
     for (const [m, list] of promoted) notifyPromoted(m, list);
   }
 
-  // ---------- Niveau noté par les potes ----------
-  function peerSummary(userId) {
-    const r = db.prepare('SELECT COUNT(*) AS n, AVG(rating) AS avg FROM peer_ratings WHERE target_id = ?').get(userId);
-    return { count: r.n, avg: r.n ? Math.round(r.avg * 10) / 10 : null };
+  // ---------- Carte joueur : critères notés par les potes ----------
+  /** Carte d'un joueur : chaque critère = moyenne des notes reçues dès PEER_MIN notes, sinon niveau de départ. */
+  function playerCard(userId) {
+    const u = db.prepare('SELECT id, level, base_level FROM users WHERE id = ?').get(userId);
+    if (!u) return null;
+    const base = u.base_level ?? u.level;
+    const rows = db.prepare('SELECT attr, COUNT(*) AS n, AVG(rating) AS avg FROM attr_ratings WHERE target_id = ? GROUP BY attr').all(u.id);
+    const by = new Map(rows.map((r) => [r.attr, r]));
+    const attrs = {};
+    for (const a of ATTRS) {
+      const r = by.get(a.key);
+      const rated = r && r.n >= PEER_MIN;
+      attrs[a.key] = { value: rated ? Math.round(r.avg * 10) / 10 : base, count: r ? r.n : 0, rated: !!rated };
+    }
+    const mean = ATTRS.reduce((t, a) => t + attrs[a.key].value, 0) / ATTRS.length;
+    const raters = db.prepare('SELECT COUNT(DISTINCT rater_id) AS n FROM attr_ratings WHERE target_id = ?').get(u.id).n;
+    return { attrs, overall: Math.round(mean * 10), level: Math.min(10, Math.max(1, Math.round(mean))), raters, profile: profileLabel(attrs) };
   }
 
-  /** Niveau effectif = moyenne arrondie des notes reçues (dès PEER_MIN notes), sinon niveau de départ. */
+  function peerSummary(userId) {
+    const c = playerCard(userId);
+    return { count: c?.raters || 0, avg: c ? c.overall / 10 : null };
+  }
+
+  /** Niveau effectif = moyenne arrondie des 6 critères (chacun noté par les potes dès PEER_MIN notes). */
   function refreshLevel(userId) {
-    const u = db.prepare('SELECT id, level, base_level FROM users WHERE id = ?').get(userId);
-    if (!u) return false;
-    const p = peerSummary(u.id);
-    const next = p.count >= PEER_MIN ? Math.min(10, Math.max(1, Math.round(p.avg))) : (u.base_level ?? u.level);
-    if (next === u.level) return false;
-    db.prepare('UPDATE users SET level = ? WHERE id = ?').run(next, u.id);
+    const u = db.prepare('SELECT id, level FROM users WHERE id = ?').get(userId);
+    const c = u && playerCard(u.id);
+    if (!c || c.level === u.level) return false;
+    db.prepare('UPDATE users SET level = ? WHERE id = ?').run(c.level, u.id);
     return true;
   }
 
@@ -288,44 +324,75 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
     if (changed) recomputeRatings();
   }
 
-  function ratePlayer(rater, targetId, rating) {
+  /** ratings = { att: 7, def: 5, ... } (les 6 critères), ou null pour retirer ses notes. */
+  function ratePlayer(rater, targetId, ratings) {
     const t = db.prepare('SELECT id FROM users WHERE id = ? AND active = 1').get(Number(targetId));
     if (!t) throw new HttpError(404, 'Joueur introuvable');
     if (t.id === rater.id) throw bad('Tu ne peux pas te noter toi-même');
+    let clean = null;
+    if (ratings !== null && ratings !== undefined) {
+      if (typeof ratings !== 'object') throw bad('Notes invalides');
+      clean = {};
+      for (const a of ATTRS) {
+        const r = intIn(ratings[a.key], 1, 10, NaN);
+        if (Number.isNaN(r)) throw bad(`Note « ${a.label} » entre 1 et 10`);
+        clean[a.key] = r;
+      }
+    }
     tx(db, () => {
-      if (rating === null || rating === '' || rating === undefined) {
-        db.prepare('DELETE FROM peer_ratings WHERE rater_id = ? AND target_id = ?').run(rater.id, t.id);
-      } else {
-        const r = intIn(rating, 1, 10, NaN);
-        if (Number.isNaN(r)) throw bad('Note entre 1 et 10');
-        db.prepare(
-          `INSERT INTO peer_ratings (rater_id, target_id, rating) VALUES (?, ?, ?)
-           ON CONFLICT(rater_id, target_id) DO UPDATE SET rating = excluded.rating, updated_at = excluded.updated_at`,
-        ).run(rater.id, t.id, r);
+      db.prepare('DELETE FROM attr_ratings WHERE rater_id = ? AND target_id = ?').run(rater.id, t.id);
+      if (clean) {
+        const ins = db.prepare('INSERT INTO attr_ratings (rater_id, target_id, attr, rating) VALUES (?, ?, ?, ?)');
+        for (const a of ATTRS) ins.run(rater.id, t.id, a.key, clean[a.key]);
       }
       if (refreshLevel(t.id)) recomputeRatings();
     });
   }
 
-  /** Joueurs à noter par `rater`, avec la note qu'il a déjà mise. */
+  /** Joueurs à noter par `rater`, avec les notes qu'il a déjà mises. */
   function ratingsFor(rater) {
-    const rows = db
-      .prepare(
-        `SELECT u.id, u.name, u.created_at, pr.rating AS my_rating FROM users u
-         LEFT JOIN peer_ratings pr ON pr.target_id = u.id AND pr.rater_id = ?
-         WHERE u.active = 1 AND u.id <> ? ORDER BY u.name_key`,
-      )
-      .all(rater.id, rater.id);
-    return { min: PEER_MIN, players: rows.map((r) => ({ id: r.id, name: r.name, myRating: r.my_rating ?? null })) };
+    const players = db.prepare('SELECT id, name FROM users WHERE active = 1 AND id <> ? ORDER BY name_key').all(rater.id);
+    const mine = db.prepare('SELECT target_id, attr, rating FROM attr_ratings WHERE rater_id = ?').all(rater.id);
+    const by = new Map();
+    for (const r of mine) {
+      if (!by.has(r.target_id)) by.set(r.target_id, {});
+      by.get(r.target_id)[r.attr] = r.rating;
+    }
+    return { min: PEER_MIN, attrs: ATTRS, players: players.map((p) => ({ id: p.id, name: p.name, myRatings: by.get(p.id) || null })) };
   }
 
   const unratedCount = (rater) =>
     db
       .prepare(
         `SELECT COUNT(*) AS n FROM users u WHERE u.active = 1 AND u.id <> ?
-         AND NOT EXISTS (SELECT 1 FROM peer_ratings pr WHERE pr.rater_id = ? AND pr.target_id = u.id)`,
+         AND NOT EXISTS (SELECT 1 FROM attr_ratings r WHERE r.rater_id = ? AND r.target_id = u.id)`,
       )
       .get(rater.id, rater.id).n;
+
+  /** Détail des notes par votant (organisateurs). */
+  function ratingDetails() {
+    const rows = db
+      .prepare(
+        `SELECT r.target_id, r.rater_id, v.name AS rater, r.attr, r.rating FROM attr_ratings r
+         JOIN users v ON v.id = r.rater_id ORDER BY v.name_key`,
+      )
+      .all();
+    const out = new Map();
+    for (const r of rows) {
+      if (!out.has(r.target_id)) out.set(r.target_id, new Map());
+      const t = out.get(r.target_id);
+      if (!t.has(r.rater_id)) t.set(r.rater_id, { rater: r.rater, ratings: {} });
+      t.get(r.rater_id).ratings[r.attr] = r.rating;
+    }
+    const res = new Map();
+    for (const [target, votes] of out) {
+      res.set(
+        target,
+        [...votes.values()].map((v) => ({ ...v, avg: Math.round((ATTRS.reduce((t, a) => t + (v.ratings[a.key] || 0), 0) / ATTRS.length) * 10) / 10 })),
+      );
+    }
+    return res;
+  }
 
   /** Nouveau compte créé : prévient organisateurs et capitaines. */
   function notifyNewAccount(user) {
@@ -537,7 +604,15 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
     if (isPlayed(m)) throw conflict('Le match est déjà joué');
     const es = activeEntries(m.id).filter((e) => e.spot === 'confirmed');
     if (es.length < 2) throw bad('Il faut au moins 2 joueurs confirmés');
-    const players = es.map((e) => ({ key: e.guest_name ? `g${e.id}` : `u${e.user_id}`, entryId: e.id, strength: entryStrength(e) }));
+    const players = es.map((e) => {
+      let profile;
+      if (e.guest_name) profile = PROFILE_ATTRS.map(() => e.guest_level ?? 5);
+      else {
+        const c = playerCard(e.user_id);
+        profile = PROFILE_ATTRS.map((k) => c.attrs[k].value);
+      }
+      return { key: e.guest_name ? `g${e.id}` : `u${e.user_id}`, entryId: e.id, strength: entryStrength(e), profile };
+    });
     const res = balanceTeams(players, { pairCounts: recentPairCounts(3), rng });
     const byKey = new Map(players.map((p) => [p.key, p.entryId]));
     tx(db, () => {
@@ -942,6 +1017,8 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
       totals: { ...totals, winRate: totals.played ? Math.round((totals.wins / totals.played) * 100) : 0, lateCancels },
       form: history.slice(-5).map((h) => h.result),
       bestDuo: duo,
+      card: playerCard(u.id),
+      attrDefs: ATTRS,
       history: history.reverse(),
       ...(canSeeRating
         ? { level: u.level, peer: peerSummary(u.id), peerMin: PEER_MIN, strength: Math.round(blendedStrength(u)), ratingStart: levelRating(u.level) }
@@ -1032,6 +1109,8 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
     ratingsFor,
     unratedCount,
     peerSummary,
+    playerCard,
+    ratingDetails,
     refreshLevel,
     refreshAllLevels,
     cancelEntry,

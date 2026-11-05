@@ -32,7 +32,7 @@ export { pairKey };
  * pairCounts: Map(pairKey -> nb de fois coéquipiers récemment) pour varier les compos.
  * Retourne { A: [key], B: [key], sumA, sumB }
  */
-export function balanceTeams(players, { pairCounts = new Map(), pairWeight = 6, tolerance = 25, rng = Math.random } = {}) {
+export function balanceTeams(players, { pairCounts = new Map(), pairWeight = 6, profileWeight = 30, tolerance = 25, rng = Math.random } = {}) {
   const n = players.length;
   if (n === 0) return { A: [], B: [], sumA: 0, sumB: 0 };
   if (n === 1) return { A: [players[0].key], B: [], sumA: players[0].strength, sumB: 0 };
@@ -43,12 +43,21 @@ export function balanceTeams(players, { pairCounts = new Map(), pairWeight = 6, 
   for (let i = 0; i < n; i++)
     for (let j = i + 1; j < n; j++) pen[i][j] = (pairCounts.get(pairKey(players[i].key, players[j].key)) || 0) * pairWeight;
 
+  // Profils (attaque, défense, technique… en points de niveau) : on répartit chaque qualité des deux côtés
+  const prof = players.map((p) => p.profile || null);
+  const dims = prof.find(Boolean)?.length || 0;
   const cost = (inA) => {
     let sumA = 0;
     for (let i = 0; i < n; i++) if (inA[i]) sumA += s[i];
     let p = 0;
     for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) if (inA[i] === inA[j]) p += pen[i][j];
-    return Math.abs(sumA - (total - sumA)) + p;
+    let q = 0;
+    for (let d = 0; d < dims; d++) {
+      let diff = 0;
+      for (let i = 0; i < n; i++) if (prof[i]) diff += inA[i] ? prof[i][d] : -prof[i][d];
+      q += Math.abs(diff);
+    }
+    return Math.abs(sumA - (total - sumA)) + p + q * profileWeight;
   };
 
   const sizeA = Math.floor(n / 2);

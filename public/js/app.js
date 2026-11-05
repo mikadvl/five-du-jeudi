@@ -501,22 +501,53 @@ function adminToolsHtml(m) {
 
 // ---------- Feuilles d'action ----------
 const PEER_MIN = 3;
-const RATING_LABELS = { 1: 'débutant', 3: 'en progrès', 5: 'niveau moyen du groupe', 7: 'bon', 9: 'très bon', 10: 'le crack' };
+const ATTRS = [
+  ['att', 'ATT', 'Attaque', 'Finition, frappe, sens du but'],
+  ['def', 'DEF', 'Défense', 'Placement, tacles, récupération'],
+  ['tec', 'TEC', 'Technique', 'Contrôle, passes, dribbles'],
+  ['vit', 'VIT', 'Vitesse', 'Accélération, vitesse de pointe'],
+  ['end', 'END', 'Endurance', 'Tient le rythme jusqu’au bout'],
+  ['phy', 'PHY', 'Physique', 'Puissance, duels, gabarit'],
+];
+const fmtNote = (v) => String(Math.round(v * 10) / 10).replace('.', ',');
 
-/** Notes reçues avec le nom des votants ; notes très éloignées de la médiane signalées (organisateurs uniquement). */
+/** Carte façon FUT : note globale /100, profil, 6 critères. */
+function fifaCardHtml(name, card) {
+  const tier = card.overall >= 75 ? 'gold' : card.overall >= 60 ? 'silver' : 'bronze';
+  const rated = card.raters >= PEER_MIN;
+  return `<section class="fut fut-${tier}" aria-label="Carte de ${esc(name)} : ${card.overall} de note globale, profil ${esc(card.profile)}">
+    <div class="fut-top">
+      <div><span class="fut-overall">${card.overall}</span><span class="fut-profile">${esc(card.profile)}</span></div>
+      <span class="fut-av" aria-hidden="true">${esc(initials(name))}</span>
+    </div>
+    <p class="fut-name">${esc(name)}</p>
+    <dl class="fut-stats">${ATTRS.map(([k, short, label]) => {
+      const a = card.attrs[k];
+      return `<div title="${esc(label)}${a.rated ? '' : ' (niveau de départ)'}"><dt>${short}</dt><dd class="${a.rated ? '' : 'is-base'}">${Math.round(a.value * 10)}</dd></div>`;
+    }).join('')}</dl>
+    <p class="fut-foot">${rated ? `Moyenne des notes de ${plural(card.raters, 'pote')}` : `En attente de ${PEER_MIN} notes (${card.raters} pour l'instant) : niveau déclaré en attendant`}</p>
+  </section>`;
+}
+
+/** Notes reçues avec le nom des votants ; notes très éloignées signalées (organisateurs uniquement). */
 function peerDistributionHtml(votes = []) {
   if (!votes.length) return '';
-  const sorted = [...votes].sort((a, b) => a.rating - b.rating);
-  const vals = sorted.map((v) => v.rating);
-  const mid = vals.length % 2 ? vals[(vals.length - 1) / 2] : (vals[vals.length / 2 - 1] + vals[vals.length / 2]) / 2;
-  const off = (n) => Math.abs(n - mid) >= 3;
-  const outliers = vals.filter(off).length;
-  return `<ul class="peer-votes">${sorted
-    .map((v) => `<li class="${off(v.rating) ? 'is-off' : ''}"><span>${esc(v.rater)}</span><span class="peer-note">${v.rating}</span></li>`)
-    .join('')}</ul>
-    <p class="small muted" style="margin-top:6px">Visible uniquement par les organisateurs.${
-      outliers ? ` <strong style="color:var(--danger)">${plural(outliers, 'note')} très éloignée${outliers > 1 ? 's' : ''} des autres.</strong>` : ''
-    }</p>`;
+  const avgs = votes.map((v) => v.avg).sort((a, b) => a - b);
+  const mid = avgs.length % 2 ? avgs[(avgs.length - 1) / 2] : (avgs[avgs.length / 2 - 1] + avgs[avgs.length / 2]) / 2;
+  const off = (v) => Math.abs(v.avg - mid) >= 2.5;
+  const outliers = votes.filter(off).length;
+  return `<div class="peer-table" role="table" aria-label="Notes reçues">
+    <div class="peer-row head" role="row"><span role="columnheader">Votant</span>${ATTRS.map(([, short]) => `<span role="columnheader">${short}</span>`).join('')}<span role="columnheader">Moy.</span></div>
+    ${[...votes]
+      .sort((a, b) => a.avg - b.avg)
+      .map(
+        (v) => `<div class="peer-row${off(v) ? ' is-off' : ''}" role="row"><span role="cell">${esc(v.rater)}</span>${ATTRS.map(([k]) => `<span role="cell">${v.ratings[k] ?? '–'}</span>`).join('')}<span role="cell"><b>${fmtNote(v.avg)}</b></span></div>`,
+      )
+      .join('')}
+  </div>
+  <p class="small muted" style="margin-top:6px">Visible uniquement par les organisateurs.${
+    outliers ? ` <strong style="color:var(--danger)">${plural(outliers, 'vote')} très éloigné${outliers > 1 ? 's' : ''} des autres.</strong>` : ''
+  }</p>`;
 }
 
 function rateNudgeHtml(n) {
@@ -530,37 +561,50 @@ function rateNudgeHtml(n) {
   if (n <= seen) return '';
   return `<section class="card rate-nudge stack">
     <div><p><strong>${n > 1 ? `${n} joueurs à noter` : '1 joueur à noter'}</strong></p>
-    <p class="small muted" style="margin-top:4px">Le niveau de chacun est la moyenne des notes des potes : c'est ce qui équilibre les équipes.</p></div>
+    <p class="small muted" style="margin-top:4px">Note leurs qualités (attaque, défense, technique…) : c'est ce qui sert à équilibrer les équipes.</p></div>
     <div class="btn-row"><a class="btn btn-small btn-dark" href="#/noter">Noter</a><button class="btn btn-small" data-action="rate-later" data-n="${n}">Plus tard</button></div>
   </section>`;
 }
 
 async function viewRate() {
   const d = await api('GET', '/api/ratings');
-  const opts = (v) =>
-    `<option value="" ${v === null ? 'selected' : ''}>Pas noté</option>` +
-    Array.from({ length: 10 }, (_, i) => i + 1)
-      .map((n) => `<option value="${n}" ${n === v ? 'selected' : ''}>${n}${RATING_LABELS[n] ? ` – ${RATING_LABELS[n]}` : ''}</option>`)
-      .join('');
-  const todo = d.players.filter((p) => p.myRating === null).length;
+  current.rate = d;
+  const avg = (r) => fmtNote(ATTRS.reduce((t, [k]) => t + r[k], 0) / ATTRS.length);
+  const todo = d.players.filter((p) => !p.myRatings).length;
   view.innerHTML = `
     ${backLink('#/profil', 'Profil')}
     <h1>Noter les joueurs</h1>
-    <p class="muted">Donne à chacun une note de 1 à 10. Le niveau d'un joueur devient la moyenne arrondie des notes reçues dès ${d.min} notes.</p>
-    <p class="small muted">${todo ? `${plural(todo, 'joueur')} sans note de ta part.` : 'Tu as noté tout le monde. Tu peux changer une note à tout moment.'}</p>
+    <p class="muted">Note chaque joueur sur 6 qualités, de 1 à 10. Sa carte affiche la moyenne des notes reçues dès ${d.min} votants, et l'app s'en sert pour répartir attaquants, défenseurs et techniciens des deux côtés.</p>
+    <p class="small muted">${todo ? `${plural(todo, 'joueur')} à noter.` : 'Tu as noté tout le monde. Tu peux changer tes notes à tout moment.'}</p>
     ${
       d.players.length
         ? `<ul class="list card card-tight">${d.players
             .map(
-              (p) => `<li><label class="row static" style="cursor:default">
+              (p) => `<li><button class="row" data-action="rate-player" data-id="${p.id}">
           <span class="av av-sm" aria-hidden="true">${esc(initials(p.name))}</span>
-          <span class="grow title">${esc(p.name)}</span>
-          <select class="input rate-select" data-rate="${p.id}" aria-label="Note de ${esc(p.name)}">${opts(p.myRating)}</select>
-        </label></li>`,
+          <span class="grow"><span class="title">${esc(p.name)}</span>${p.myRatings ? `<span class="sub">Ta moyenne : ${avg(p.myRatings)}</span>` : ''}</span>
+          ${p.myRatings ? '<span class="chip chip-open">Noté</span>' : '<span class="chip chip-full">À noter</span>'}${ICON.chevron}
+        </button></li>`,
             )
             .join('')}</ul>`
         : '<p class="card empty">Personne à noter pour le moment.</p>'
     }`;
+}
+
+function rateSheet(p) {
+  const r = p.myRatings || {};
+  openSheet(`<h2 id="sheet-title">Noter ${esc(p.name)}</h2>
+    <form data-form="rate" data-id="${p.id}" class="form-grid">
+      ${ATTRS.map(
+        ([k, , label, hint]) => `<label class="field attr-field">
+          <span class="attr-head"><span>${label}<small>${hint}</small></span><output data-out="${k}">${r[k] ?? 5}</output></span>
+          <input type="range" name="${k}" min="1" max="10" step="1" value="${r[k] ?? 5}" data-attr="${k}">
+        </label>`,
+      ).join('')}
+      <p class="small muted">5 = niveau moyen du groupe.</p>
+      <div class="actions"><button type="button" class="btn" data-close>Annuler</button><button class="btn btn-dark" type="submit">Enregistrer</button></div>
+      ${p.myRatings ? '<button type="button" class="link link-danger" data-action="clear-rating" data-id="' + p.id + '">Retirer mes notes</button>' : ''}
+    </form>`);
 }
 
 const SELF_LEVELS = [
@@ -844,6 +888,16 @@ const actions = {
     toast('Rappels activés');
     render();
   },
+  'rate-player'(el) {
+    const p = current.rate?.players.find((x) => x.id === Number(el.dataset.id));
+    if (p) rateSheet(p);
+  },
+  async 'clear-rating'(el) {
+    await api('PUT', `/api/ratings/${el.dataset.id}`, { ratings: null });
+    closeSheet();
+    toast('Notes retirées');
+    render();
+  },
   'rate-later'(el) {
     storage.set('fdj-rate-later', el.dataset.n);
     el.closest('.rate-nudge')?.remove();
@@ -883,11 +937,11 @@ const actions = {
     openSheet(`<h2 id="sheet-title">${esc(u.name)}</h2>
       <form data-form="user" data-id="${u.id}" class="form-grid">
         <div class="card" style="background:var(--field);padding:14px">
-          <p><strong>Niveau actuel : ${u.level}/10</strong></p>
+          <p><strong>Note globale : ${u.card.overall}, niveau ${u.level}/10, ${esc(u.card.profile)}</strong></p>
           <p class="small muted" style="margin-top:4px">${
             u.peer_count >= PEER_MIN
-              ? `Moyenne des potes : ${String(u.peer_avg).replace('.', ',')} sur ${plural(u.peer_count, 'note')}.`
-              : `${plural(u.peer_count, 'note')} des potes sur ${PEER_MIN} nécessaires : c'est le niveau de départ qui compte pour l'instant.`
+              ? `Noté par ${plural(u.peer_count, 'pote')}.`
+              : `${plural(u.peer_count, 'votant')} sur ${PEER_MIN} nécessaires : c'est le niveau de départ qui compte pour l'instant.`
           } Indice de forme : ${u.elo}, ${plural(u.games, 'match', 'matchs')}.</p>
           ${peerDistributionHtml(u.peer_votes)}
         </div>
@@ -895,7 +949,7 @@ const actions = {
           <select class="input" name="level">${Array.from({ length: 10 }, (_, i) => i + 1)
             .map((n) => `<option value="${n}" ${n === (u.base_level ?? u.level) ? 'selected' : ''}>${n}${n === 5 ? ' – niveau moyen du groupe' : n === 1 ? ' – débutant' : n === 10 ? ' – le crack' : ''}</option>`)
             .join('')}</select>
-          <small>Déclaré à l'inscription. Utilisé tant que le joueur a moins de ${PEER_MIN} notes des potes.</small>
+          <small>Déclaré à l'inscription. Utilisé pour chaque qualité tant qu'elle a moins de ${PEER_MIN} notes des potes.</small>
         </label>
         <fieldset class="field">
           <legend>Rôle</legend>
@@ -1032,6 +1086,13 @@ const forms = {
     location.hash = `#/match/${m.id}`;
     toast('Match créé, tout le monde est prévenu');
   },
+  async rate(form, fd) {
+    const ratings = Object.fromEntries(ATTRS.map(([k]) => [k, Number(fd.get(k))]));
+    await api('PUT', `/api/ratings/${form.dataset.id}`, { ratings });
+    closeSheet();
+    toast('Notes enregistrées');
+    render();
+  },
   async planned(form, fd) {
     await api('PUT', `/api/planned/${encodeURIComponent(form.dataset.slot)}`, { location: fd.get('location'), skipped: form.querySelector('[name=skipped]').checked });
     closeSheet();
@@ -1103,6 +1164,10 @@ document.addEventListener('submit', async (e) => {
 });
 
 document.addEventListener('input', (e) => {
+  if (e.target.matches('[data-attr]')) {
+    const out = e.target.closest('form').querySelector(`[data-out="${e.target.dataset.attr}"]`);
+    if (out) out.textContent = e.target.value;
+  }
   if (e.target.matches('input[name=location]')) {
     e.target
       .closest('form')
@@ -1112,16 +1177,6 @@ document.addEventListener('input', (e) => {
 });
 
 document.addEventListener('change', async (e) => {
-  if (e.target.matches('[data-rate]')) {
-    const v = e.target.value;
-    try {
-      await api('PUT', `/api/ratings/${e.target.dataset.rate}`, { rating: v === '' ? null : Number(v) });
-      toast(v === '' ? 'Note retirée' : 'Note enregistrée');
-    } catch (err) {
-      toast(err.message, true);
-    }
-    return;
-  }
   if (e.target.matches('[data-pref=notifyEmail]')) {
     try {
       const r = await api('PUT', '/api/me', { notifyEmail: e.target.checked });
@@ -1285,6 +1340,8 @@ async function viewPlayer(id) {
       <div><h1>${esc(p.name)}</h1>
       ${p.form.length ? `<p class="form" style="margin-top:8px" aria-label="Forme : ${p.form.join(', ')}">${p.form.map((r) => `<span class="result-dot r-${r}">${r}</span>`).join('')}</p>` : ''}</div>
     </div>
+    ${p.card ? fifaCardHtml(p.name, p.card) : ''}
+    ${!isMe ? '<a class="btn btn-small" href="#/noter" style="align-self:flex-start">Noter les joueurs</a>' : ''}
     <div class="statgrid">
       <div><span class="num">${t.played}</span><span class="lbl">Matchs</span></div>
       <div><span class="num">${t.played ? `${t.winRate}%` : '–'}</span><span class="lbl">Victoires</span></div>
@@ -1298,11 +1355,7 @@ async function viewPlayer(id) {
         ? `<section class="card">
       <div class="section-head" style="padding:0"><h2>Indice de forme</h2><span class="num" style="font-size:30px">${p.strength}</span></div>
       ${sparkline([p.ratingStart, ...ratings])}
-      <p class="small muted" style="margin-top:8px">Mélange du niveau (${p.level}/10, ${
-        p.peer.count >= p.peerMin
-          ? `moyenne arrondie de ${plural(p.peer.count, 'note')} des potes : ${String(p.peer.avg).replace('.', ',')}`
-          : `niveau de départ, en attendant ${p.peerMin} notes des potes (${p.peer.count} pour l'instant)`
-      }) et des résultats. Sert à équilibrer les équipes. Visible par ${isMe ? 'toi' : 'le joueur'} et les organisateurs.</p>
+      <p class="small muted" style="margin-top:8px">Mélange du niveau (${p.level}/10, tiré de la carte) et des résultats des matchs. Sert à équilibrer les équipes. Visible par ${isMe ? 'toi' : 'le joueur'} et les organisateurs.</p>
     </section>`
         : ''
     }

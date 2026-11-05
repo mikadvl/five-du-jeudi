@@ -38,8 +38,8 @@ const roster = [
 ];
 const users = roster.map(([name, level, role]) => {
   const r = db
-    .prepare('INSERT INTO users (name, name_key, password_hash, role, level, elo) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(name, nameKey(name), hash, role || 'player', level, levelRating(level));
+    .prepare('INSERT INTO users (name, name_key, password_hash, role, level, base_level, elo) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .run(name, nameKey(name), hash, role || 'player', level, level, levelRating(level));
   return db.prepare('SELECT * FROM users WHERE id = ?').get(r.lastInsertRowid);
 });
 db.prepare(`UPDATE settings SET value = '["UrbanSoccer Montaudran","Five Sesquières","Le Five Toulouse Sud"]' WHERE key = 'venues'`).run();
@@ -97,6 +97,20 @@ for (const name of order) {
 }
 svc.generateTeams(m.id, { rng: rnd });
 db.prepare('DELETE FROM sent_notifications').run();
+// Notes par critères entre potes (profils variés)
+const ARCH = { Karim: 'att', Yann: 'att', Nico: 'tec', Thomas: 'def', Romain: 'def', Bruno: 'phy', Julien: 'end', Max: 'att', Théo: 'vit', Lucas: 'tec', Alex: 'end', Hugo: 'vit', Seb: 'def', Mika: 'tec' };
+for (const target of users) {
+  const raters = users.filter((u) => u.id !== target.id).slice(0, 4 + (target.id % 5));
+  for (const r of raters) {
+    if (rnd() < 0.15) continue;
+    const ratings = {};
+    for (const k of ['att', 'def', 'tec', 'vit', 'end', 'phy']) {
+      const bonus = ARCH[target.name] === k ? 2 : 0;
+      ratings[k] = Math.max(1, Math.min(10, Math.round(target.level - 1 + bonus + (rnd() * 2 - 1))));
+    }
+    svc.ratePlayer(r, target.id, ratings);
+  }
+}
 // Un jeudi planifié ailleurs, un autre sauté
 const later = upcomingSlots(new Date(), 4, s.time, 3, tz);
 svc.planSlot(later[1].slot, { location: 'Five Sesquières' });

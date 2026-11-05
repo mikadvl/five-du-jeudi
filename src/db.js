@@ -118,6 +118,22 @@ const MIGRATIONS = [
   );
   CREATE INDEX ix_peer_target ON peer_ratings(target_id);
   `,
+  // v4 : notation par critères (carte FUT). Les anciennes notes globales servent de base à chaque critère.
+  `
+  CREATE TABLE attr_ratings (
+    rater_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    target_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    attr TEXT NOT NULL CHECK (attr IN ('att', 'def', 'tec', 'vit', 'end', 'phy')),
+    rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 10),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    PRIMARY KEY (rater_id, target_id, attr)
+  );
+  CREATE INDEX ix_attr_target ON attr_ratings(target_id, attr);
+  INSERT INTO attr_ratings (rater_id, target_id, attr, rating, updated_at)
+    SELECT p.rater_id, p.target_id, a.attr, p.rating, p.updated_at
+    FROM peer_ratings p CROSS JOIN (SELECT 'att' AS attr UNION ALL SELECT 'def' UNION ALL SELECT 'tec'
+      UNION ALL SELECT 'vit' UNION ALL SELECT 'end' UNION ALL SELECT 'phy') a;
+  `,
 ];
 
 export const DEFAULT_SETTINGS = {

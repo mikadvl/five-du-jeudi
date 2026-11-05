@@ -139,11 +139,16 @@ test('détail des notes avec votants : organisateurs uniquement', async () => {
     const c = await capi('POST', '/api/auth/register', { name: 'Capi', password: 'secret1', inviteCode: code });
     const t = await x('POST', '/api/auth/register', { name: 'Cible', password: 'secret1', inviteCode: code });
     await orga('PUT', `/api/admin/users/${c.body.user.id}`, { role: 'captain' });
-    await orga('PUT', `/api/ratings/${t.body.user.id}`, { rating: 7 });
-    await capi('PUT', `/api/ratings/${t.body.user.id}`, { rating: 2 });
+    const all = (n) => ({ att: n, def: n, tec: n, vit: n, end: n, phy: n });
+    await orga('PUT', `/api/ratings/${t.body.user.id}`, { ratings: all(7) });
+    await capi('PUT', `/api/ratings/${t.body.user.id}`, { ratings: all(2) });
     const list = (await orga('GET', '/api/admin/users')).body;
     const row = list.find((u) => u.id === t.body.user.id);
-    assert.deepEqual(row.peer_votes, [{ rater: 'Capi', rating: 2 }, { rater: 'Orga', rating: 7 }]);
+    assert.deepEqual(row.peer_votes.map((v) => [v.rater, v.avg]), [['Capi', 2], ['Orga', 7]]);
+    assert.equal(row.peer_votes[0].ratings.att, 2);
+    const card = (await x('GET', `/api/players/${t.body.user.id}`)).body.card;
+    assert.equal(card.raters, 2); // carte visible par le joueur
+    assert.equal((await capi('GET', `/api/players/${t.body.user.id}`)).body.card.raters, 2); // et par les autres
     const forTarget = (await x('GET', '/api/ratings')).body;
     assert.ok(!JSON.stringify(forTarget).includes('Capi\",\"rating'));
     assert.equal((await capi('GET', '/api/admin/users')).status, 403);

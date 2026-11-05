@@ -335,28 +335,42 @@ test('orgas et capitaines prévenus des nouveaux comptes', async () => {
   assert.equal(sent.length, 0);
 });
 
-test('niveau = moyenne arrondie des notes des potes (dès 3 notes)', () => {
+test('carte joueur : moyenne par critère dès 3 notes, note globale et profil', () => {
   const { svc, addUser, db } = setup();
-  const target = addUser('Karim', 9); // se déclare très bon
+  const target = addUser('Karim', 9);
   db.prepare('UPDATE users SET base_level = level').run();
   const raters = ['A', 'B', 'C', 'D'].map((n) => addUser(n));
   const level = () => db.prepare('SELECT level FROM users WHERE id = ?').get(target.id).level;
-  assert.throws(() => svc.ratePlayer(target, target.id, 5), /toi-même/);
-  svc.ratePlayer(raters[0], target.id, 6);
-  svc.ratePlayer(raters[1], target.id, 7);
-  assert.equal(level(), 9); // 2 notes : niveau de départ conservé
-  svc.ratePlayer(raters[2], target.id, 6);
-  assert.equal(level(), 6); // (6+7+6)/3 = 6,33 -> 6
-  svc.ratePlayer(raters[3], target.id, 8);
-  assert.equal(level(), 7); // 6,75 -> 7
-  assert.equal(db.prepare('SELECT elo FROM users WHERE id = ?').get(target.id).elo, levelRating(7));
-  svc.ratePlayer(raters[3], target.id, null); // note retirée
+  const r = (att, def) => ({ att, def, tec: 6, vit: 6, end: 6, phy: 6 });
+  assert.throws(() => svc.ratePlayer(target, target.id, r(5, 5)), /toi-même/);
+  assert.throws(() => svc.ratePlayer(raters[0], target.id, { att: 5 }), /Défense/);
+  svc.ratePlayer(raters[0], target.id, r(9, 3));
+  svc.ratePlayer(raters[1], target.id, r(8, 4));
+  assert.equal(level(), 9); // 2 votants : niveau de départ
+  svc.ratePlayer(raters[2], target.id, r(10, 2));
+  const c = svc.playerCard(target.id);
+  assert.equal(c.attrs.att.value, 9);
+  assert.equal(c.attrs.def.value, 3);
+  assert.equal(c.profile, 'Buteur');
+  assert.equal(c.overall, 60); // (9+3+6*4)/6 = 6,0
   assert.equal(level(), 6);
+  assert.equal(c.raters, 3);
   assert.equal(svc.unratedCount(raters[0]), 3);
-  const list = svc.ratingsFor(raters[0]);
-  assert.equal(list.players.find((p) => p.id === target.id).myRating, 6);
-  // suppression d'un votant : sa note disparaît, retour au niveau de départ
-  const orga = addUser('Orga', 5, 'admin');
-  svc.deleteUser(raters[0].id, orga);
+  assert.deepEqual(svc.ratingsFor(raters[0]).players.find((p) => p.id === target.id).myRatings.att, 9);
+  const det = svc.ratingDetails().get(target.id);
+  assert.equal(det.length, 3);
+  svc.ratePlayer(raters[2], target.id, null);
   assert.equal(level(), 9);
+});
+
+test('équilibrage : attaquants et défenseurs répartis des deux côtés', () => {
+  const players = [
+    ...['a1', 'a2'].map((key) => ({ key, strength: 1000, profile: [9, 2, 5] })),
+    ...['d1', 'd2'].map((key) => ({ key, strength: 1000, profile: [2, 9, 5] })),
+  ];
+  for (let i = 0; i < 20; i++) {
+    const r = balanceTeams(players, { tolerance: 0 });
+    const attA = r.A.filter((k) => k.startsWith('a')).length;
+    assert.equal(attA, 1, `compo déséquilibrée : ${r.A.join(',')}`);
+  }
 });
