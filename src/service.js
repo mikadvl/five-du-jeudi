@@ -259,7 +259,7 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
     return { cancelled: count, promoted: promoted.length };
   }
 
-  /** Supprime un compte et tout ce qui s'y rattache (inscriptions, +1, buts, votes, historique). */
+  /** Supprime un compte et tout ce qui s'y rattache (inscriptions, +1, votes, historique). */
   function deleteUser(userId, actor) {
     const u = db.prepare('SELECT * FROM users WHERE id = ?').get(Number(userId));
     if (!u) throw new HttpError(404, 'Joueur introuvable');
@@ -561,20 +561,18 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
     return plannedSlots(26).find((x) => x.slot === slot);
   }
 
-  /** Dernier match joué : score, MVP (si le vote est clos) et meilleur buteur. */
+  /** Dernier match joué : score et MVP (si le vote est clos). */
   function lastResult() {
     const m = db.prepare('SELECT * FROM matches WHERE cancelled = 0 AND score_a IS NOT NULL ORDER BY starts_at DESC LIMIT 1').get();
     if (!m) return null;
     const es = activeEntries(m.id).filter((e) => e.spot === 'confirmed' && e.team);
     const winners = new Set(mvpWinners(m));
-    const top = es.filter((e) => e.goals > 0).sort((a, b) => b.goals - a.goals)[0];
     return {
       id: m.id,
       startsAt: m.starts_at,
       scoreA: m.score_a,
       scoreB: m.score_b,
-      mvp: es.filter((e) => winners.has(e.id)).map((e) => ({ name: e.guest_name || e.user_name, goals: e.goals })),
-      topScorer: top ? { name: top.guest_name || top.user_name, goals: top.goals } : null,
+      mvp: es.filter((e) => winners.has(e.id)).map((e) => ({ name: e.guest_name || e.user_name })),
     };
   }
 
@@ -660,100 +658,8 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
     });
   }
 
-  // ---------- Match en direct ----------
-  /** Un match est « en direct » de 30 min avant le coup d'envoi à 4 h après, équipes faites, score pas encore saisi. */
-  function isLive(m) {
-    if (!m || m.cancelled || isPlayed(m) || !m.teams_at) return false;
-    const t = new Date(m.starts_at).getTime();
-    const now = clock().getTime();
-    return now >= t - 30 * 60e3 && now <= t + 4 * H;
-  }
-
-  function liveMatch() {
-    const rows = db.prepare('SELECT * FROM matches WHERE cancelled = 0 AND score_a IS NULL AND teams_at IS NOT NULL ORDER BY starts_at').all();
-    return rows.find(isLive) || null;
-  }
-
-  function liveState(m) {
-    const goals = db
-      .prepare(
-        `SELECT g.id, g.team, g.entry_id, g.created_at, COALESCE(e.guest_name, u.name) AS scorer
-         FROM match_goals g LEFT JOIN entries e ON e.id = g.entry_id LEFT JOIN users u ON u.id = e.user_id
-         WHERE g.match_id = ? ORDER BY g.id`,
-      )
-      .all(m.id);
-    return {
-      scoreA: goals.filter((g) => g.team === 'A').length,
-      scoreB: goals.filter((g) => g.team === 'B').length,
-      goals: goals.map((g) => ({ id: g.id, team: g.team, entryId: g.entry_id, scorer: g.scorer || null, at: g.created_at })),
-    };
-  }
-
-  const scoreLine = (m, st) => `${teamName('A')} ${st.scoreA} – ${st.scoreB} ${teamName('B')}`;
-
-  function notifyGoal(m, st, goal) {
-    const ids = activeEntries(m.id).filter((e) => e.spot === 'confirmed').map((e) => e.user_id);
-    const staff = db.prepare("SELECT id FROM users WHERE active = 1 AND role IN ('admin', 'captain')").all().map((u) => u.id);
-    fire([...ids, ...staff], {
-      title: `⚽ ${scoreLine(m, st)}`,
-      body: goal ? `But pour ${teamName(goal.team)}${goal.scorer ? ` : ${goal.scorer}` : ''}` : 'Dernier but annulé',
-      url: `/#/match/${m.id}`,
-      tag: `live-${m.id}`,
-      pushOnly: true,
-    });
-  }
-
-  function addGoal(matchId, actor, { team, entryId = null } = {}) {
-    const m = matchId ? requireMatch(matchId) : liveMatch();
-    if (!m) throw conflict('Aucun match en cours');
-    if (!isLive(m)) throw conflict("Le match n'est pas en cours");
-    if (!['A', 'B'].includes(team)) throw bad('Équipe invalide');
-    let entry = null;
-    if (entryId) {
-      entry = db.prepare("SELECT * FROM entries WHERE id = ? AND match_id = ? AND state = 'active' AND spot = 'confirmed'").get(Number(entryId), m.id);
-      if (!entry) throw bad('Buteur inconnu dans ce match');
-    }
-    const r = db.prepare('INSERT INTO match_goals (match_id, team, entry_id, created_by) VALUES (?, ?, ?, ?)').run(m.id, team, entry?.id ?? null, actor.id);
-    const st = liveState(m);
-    notifyGoal(m, st, st.goals.find((g) => g.id === Number(r.lastInsertRowid)));
-    return { match: m, state: st };
-  }
-
-  function setGoalScorer(goalId, entryId) {
-    const g = db.prepare('SELECT * FROM match_goals WHERE id = ?').get(Number(goalId));
-    if (!g) throw new HttpError(404, 'But introuvable');
-    if (entryId) {
-      const e = db.prepare("SELECT id FROM entries WHERE id = ? AND match_id = ? AND state = 'active'").get(Number(entryId), g.match_id);
-      if (!e) throw bad('Buteur inconnu dans ce match');
-    }
-    db.prepare('UPDATE match_goals SET entry_id = ? WHERE id = ?').run(entryId ? Number(entryId) : null, g.id);
-    return requireMatch(g.match_id);
-  }
-
-  function removeGoal(matchId, goalId) {
-    const m = matchId ? requireMatch(matchId) : liveMatch();
-    if (!m) throw conflict('Aucun match en cours');
-    const g = goalId
-      ? db.prepare('SELECT * FROM match_goals WHERE id = ? AND match_id = ?').get(Number(goalId), m.id)
-      : db.prepare('SELECT * FROM match_goals WHERE match_id = ? ORDER BY id DESC LIMIT 1').get(m.id);
-    if (!g) throw conflict('Aucun but à annuler');
-    db.prepare('DELETE FROM match_goals WHERE id = ?').run(g.id);
-    const st = liveState(m);
-    notifyGoal(m, st, null);
-    return { match: m, state: st };
-  }
-
-  /** Fin du match : le score et les buteurs du direct deviennent le résultat officiel. */
-  function finishLive(matchId) {
-    const m = requireMatch(matchId);
-    const st = liveState(m);
-    const goals = {};
-    for (const g of st.goals) if (g.entryId) goals[g.entryId] = (goals[g.entryId] || 0) + 1;
-    return saveResult(m.id, { scoreA: st.scoreA, scoreB: st.scoreB, goals });
-  }
-
   // ---------- Résultats, Elo, MVP ----------
-  function saveResult(matchId, { scoreA, scoreB, goals = {} }) {
+  function saveResult(matchId, { scoreA, scoreB }) {
     const m = requireMatch(matchId);
     if (m.cancelled) throw conflict('Ce match est annulé');
     const a = intIn(scoreA, 0, 99, NaN);
@@ -764,8 +670,6 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
     const firstTime = !isPlayed(m);
     tx(db, () => {
       db.prepare('UPDATE matches SET score_a = ?, score_b = ? WHERE id = ?').run(a, b, m.id);
-      const up = db.prepare('UPDATE entries SET goals = ? WHERE id = ?');
-      for (const e of es) up.run(intIn(goals[e.id], 0, 50, 0), e.id);
       recomputeRatings();
     });
     if (firstTime) {
@@ -881,7 +785,6 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
       isGuest: !!e.guest_name,
       hostName: e.guest_name ? e.user_name : null,
       team: e.spot === 'confirmed' ? e.team : null,
-      goals: e.goals,
       mine: !!viewer && e.user_id === viewer.id,
       ...cardOf(e),
       ...(isAdmin ? { strength: Math.round(entryStrength(e)), level: e.guest_name ? e.guest_level : e.user_level } : {}),
@@ -929,7 +832,6 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
         : null,
       teams,
       mvp,
-      live: isLive(m) ? liveState(m) : null,
       canJoin: !m.cancelled && !played && (!started || isAdmin),
       canManage: isAdmin,
     };
@@ -949,7 +851,7 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
       scoreB: m.score_b,
       confirmedCount: es.filter((e) => e.spot === 'confirmed').length,
       waitlistCount: es.filter((e) => e.spot === 'waitlist').length,
-      my: mine ? { spot: mine.spot, team: mine.team, goals: mine.goals } : null,
+      my: mine ? { spot: mine.spot, team: mine.team } : null,
     };
   }
 
@@ -1018,7 +920,7 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
     const rows = new Map();
     const row = (id, name) => {
       if (!rows.has(id))
-        rows.set(id, { userId: id, name, played: 0, wins: 0, draws: 0, losses: 0, goals: 0, mvps: 0, lateCancels: 0, form: [] });
+        rows.set(id, { userId: id, name, played: 0, wins: 0, draws: 0, losses: 0, mvps: 0, lateCancels: 0, form: [] });
       return rows.get(id);
     };
     for (const m of playedMatchRows(range)) {
@@ -1036,7 +938,6 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
         if (r === 'V') st.wins++;
         else if (r === 'N') st.draws++;
         else st.losses++;
-        st.goals += e.goals;
         if (winners.has(e.id)) st.mvps++;
         st.form.push(r);
       }
@@ -1053,7 +954,6 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
     const players = [...rows.values()].map((r) => ({
       ...r,
       winRate: r.played ? Math.round((r.wins / r.played) * 100) : 0,
-      goalsPerMatch: r.played ? Math.round((r.goals / r.played) * 10) / 10 : 0,
       form: r.form.slice(-5),
     }));
     return { season: season === 'all' ? 'all' : Number(season) || seasonOf(clock(), tz), seasons: availableSeasons(), players };
@@ -1068,7 +968,7 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
     );
     const history = [];
     const mates = new Map();
-    const totals = { played: 0, wins: 0, draws: 0, losses: 0, goals: 0, mvps: 0 };
+    const totals = { played: 0, wins: 0, draws: 0, losses: 0, mvps: 0 };
     for (const m of playedMatchRows()) {
       const es = db
         .prepare(
@@ -1081,7 +981,6 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
       const { gf, ga, r } = resultFor(me.team, m);
       const mvp = mvpWinners(m).includes(me.id);
       totals.played++;
-      totals.goals += me.goals;
       if (mvp) totals.mvps++;
       if (r === 'V') totals.wins++;
       else if (r === 'N') totals.draws++;
@@ -1100,7 +999,6 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
         result: r,
         goalsFor: gf,
         goalsAgainst: ga,
-        goals: me.goals,
         mvp,
         ...(canSeeRating && hist.has(m.id) ? { rating: Math.round(hist.get(m.id)) } : {}),
       });
@@ -1206,13 +1104,6 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
     deleteUser,
     notifyRole,
     notifyNewAccount,
-    liveMatch,
-    liveState,
-    addGoal,
-    removeGoal,
-    setGoalScorer,
-    finishLive,
-    scoreLine,
     ratePlayer,
     ratingsFor,
     unratedCount,

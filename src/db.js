@@ -151,6 +151,12 @@ const MIGRATIONS = [
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
   );
   `,
+  // v6 : retrait du match en direct, des raccourcis Apple Watch et des buteurs
+  `
+  DROP TABLE IF EXISTS match_goals;
+  DROP TABLE IF EXISTS api_tokens;
+  UPDATE entries SET goals = 0;
+  `,
 ];
 
 export const DEFAULT_SETTINGS = {

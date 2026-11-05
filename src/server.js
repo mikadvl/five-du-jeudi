@@ -5,7 +5,6 @@ import { fileURLToPath } from 'node:url';
 import { openDb, getSettings, setSettings, tx } from './db.js';
 import { createService, HttpError, canManage } from './service.js';
 
-const sha256 = (t) => crypto.createHash('sha256').update(t).digest('hex');
 import { createNotifier } from './notify.js';
 import { levelRating } from './teams.js';
 import {
@@ -330,7 +329,7 @@ export function createApp({ db, service, notifier, trustProxy = true }) {
     res.json(matchDto(req, req.params.id));
   });
   app.put('/api/matches/:id/result', requireManager, (req, res) => {
-    service.saveResult(req.params.id, req.body || {});
+    service.saveResult(req.params.id, { scoreA: req.body?.scoreA, scoreB: req.body?.scoreB });
     res.json(matchDto(req, req.params.id));
   });
   app.delete('/api/matches/:id/result', requireManager, (req, res) => {
@@ -359,87 +358,6 @@ export function createApp({ db, service, notifier, trustProxy = true }) {
     service.runReminders();
     res.json(settingsDto(getSettings(db)));
   });
-
-  // ---------- Match en direct ----------
-  app.post('/api/matches/:id/goals', requireManager, (req, res) => {
-    service.addGoal(req.params.id, req.user, { team: req.body?.team, entryId: req.body?.entryId || null });
-    res.json(matchDto(req, req.params.id));
-  });
-  app.delete('/api/matches/:id/goals/:goalId', requireManager, (req, res) => {
-    service.removeGoal(req.params.id, req.params.goalId);
-    res.json(matchDto(req, req.params.id));
-  });
-  app.put('/api/goals/:id', requireManager, (req, res) => {
-    const m = service.setGoalScorer(req.params.id, req.body?.entryId || null);
-    res.json(matchDto(req, m.id));
-  });
-  app.post('/api/matches/:id/finish', requireManager, (req, res) => {
-    service.finishLive(req.params.id);
-    res.json(matchDto(req, req.params.id));
-  });
-
-  // ---------- Raccourcis (Apple Watch) : lien personnel des orgas et capitaines ----------
-  app.get('/api/me/shortcut', requireManager, (req, res) => {
-    const t = db.prepare('SELECT created_at FROM api_tokens WHERE user_id = ?').get(req.user.id);
-    res.json({ active: !!t, createdAt: t?.created_at || null });
-  });
-  app.post('/api/me/shortcut', requireManager, (req, res) => {
-    const token = crypto.randomBytes(24).toString('base64url');
-    db.prepare(
-      `INSERT INTO api_tokens (token_hash, user_id) VALUES (?, ?)
-       ON CONFLICT(user_id) DO UPDATE SET token_hash = excluded.token_hash, created_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')`,
-    ).run(sha256(token), req.user.id);
-    res.json({ token });
-  });
-  app.delete('/api/me/shortcut', requireManager, (req, res) => {
-    db.prepare('DELETE FROM api_tokens WHERE user_id = ?').run(req.user.id);
-    res.json({ ok: true });
-  });
-
-  const hookLimiter = rateLimiter({ max: 60, windowMs: 60e3 });
-  const hookUser = (req) => {
-    const u = db
-      .prepare('SELECT u.* FROM api_tokens t JOIN users u ON u.id = t.user_id WHERE t.token_hash = ? AND u.active = 1')
-      .get(sha256(String(req.params.token || '')));
-    return u && canManage(u) ? u : null;
-  };
-  // Réponses en texte simple : Raccourcis peut les afficher ou les lire à voix haute sur la montre
-  const hook = (fn) => (req, res) => {
-    res.type('text/plain; charset=utf-8').set('Cache-Control', 'no-store');
-    if (!hookLimiter(`hook:${req.ip}`)) return res.status(429).send('Trop de requêtes, réessaie dans une minute');
-    const u = hookUser(req);
-    if (!u) return res.status(403).send('Lien invalide ou révoqué');
-    try {
-      res.send(fn(u, req));
-    } catch (err) {
-      res.status(err.status || 500).send(err.message || 'Erreur');
-    }
-  };
-  const liveText = (m, st, prefix = '') => `${prefix}${service.scoreLine(m, st)}`;
-  app.post(
-    '/hook/:token/goal/:team',
-    hook((u, req) => {
-      const team = { a: 'A', b: 'B' }[String(req.params.team).toLowerCase()];
-      if (!team) throw new HttpError(400, 'Équipe inconnue (a ou b)');
-      const { match, state } = service.addGoal(null, u, { team });
-      return liveText(match, state, '⚽ ');
-    }),
-  );
-  app.post(
-    '/hook/:token/undo',
-    hook((u) => {
-      const { match, state } = service.removeGoal(null, null);
-      return liveText(match, state, 'Dernier but annulé. ');
-    }),
-  );
-  app.get(
-    '/hook/:token/score',
-    hook(() => {
-      const m = service.liveMatch();
-      if (!m) throw new HttpError(409, 'Aucun match en cours');
-      return liveText(m, service.liveState(m));
-    }),
-  );
 
   app.get('/api/admin/version', requireAdmin, async (req, res) => res.json(await versionInfo()));
   app.post('/api/admin/update', requireAdmin, async (req, res) => {

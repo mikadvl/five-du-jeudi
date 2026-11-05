@@ -160,7 +160,7 @@ test('résultat, Elo, vote MVP et stats', async () => {
   const admin = addUser('Admin', 5, 'admin');
   let dto = svc.serializeMatch(svc.getMatch(m.id), admin);
   const scorer = dto.confirmed.find((e) => e.team === 'A');
-  svc.saveResult(m.id, { scoreA: 8, scoreB: 5, goals: { [scorer.id]: 4 } });
+  svc.saveResult(m.id, { scoreA: 8, scoreB: 5 });
 
   const elo = (u) => db.prepare('SELECT elo, games FROM users WHERE id = ?').get(u.id);
   const aPlayer = ps.find((p) => p.id === scorer.userId);
@@ -186,7 +186,7 @@ test('résultat, Elo, vote MVP et stats', async () => {
   const st = svc.stats('2026');
   const row = st.players.find((x) => x.userId === aPlayer.id);
   assert.equal(row.wins, 1);
-  assert.equal(row.goals, 4);
+  assert.equal(row.goals, undefined);
   assert.equal(row.mvps, 1);
   assert.deepEqual(row.form, ['V']);
 
@@ -197,7 +197,7 @@ test('résultat, Elo, vote MVP et stats', async () => {
   assert.equal(hidden.strength, undefined);
 
   // Correction du score : l'Elo est recalculé
-  svc.saveResult(m.id, { scoreA: 2, scoreB: 6, goals: {} });
+  svc.saveResult(m.id, { scoreA: 2, scoreB: 6 });
   assert.ok(elo(aPlayer).elo < 1000);
 });
 
@@ -373,35 +373,4 @@ test('équilibrage : attaquants et défenseurs répartis des deux côtés', () =
     const attA = r.A.filter((k) => k.startsWith('a')).length;
     assert.equal(attA, 1, `compo déséquilibrée : ${r.A.join(',')}`);
   }
-});
-
-test('match en direct : buts, annulation, buteur, fin du match = résultat', async () => {
-  const { svc, addUser, clock, sent, flush } = setup();
-  const orga = addUser('Mika', 5, 'admin');
-  const ps = Array.from({ length: 4 }, (_, i) => addUser(`L${i}`));
-  const m = matchIn(svc);
-  ps.forEach((p) => svc.join(m.id, p));
-  svc.generateTeams(m.id);
-  assert.throws(() => svc.addGoal(null, orga, { team: 'A' }), /Aucun match en cours/);
-  clock.now = new Date('2026-11-05T19:20:00Z'); // 20 min après le coup d'envoi (20h Paris)
-  assert.equal(svc.liveMatch().id, m.id);
-  await flush();
-  sent.length = 0;
-  svc.addGoal(null, orga, { team: 'A' });
-  svc.addGoal(null, orga, { team: 'B' });
-  const { state } = svc.addGoal(null, orga, { team: 'A' });
-  assert.equal(`${state.scoreA}-${state.scoreB}`, '2-1');
-  await flush();
-  assert.equal(sent.at(-1).title, '⚽ Chasubles 2 – 1 Sans chasuble');
-  assert.equal(sent.at(-1).pushOnly, true);
-  const after = svc.removeGoal(null, null).state;
-  assert.equal(`${after.scoreA}-${after.scoreB}`, '1-1');
-  const dto = svc.serializeMatch(svc.getMatch(m.id), orga);
-  const scorerA = dto.confirmed.find((e) => e.team === 'A');
-  svc.setGoalScorer(dto.live.goals[0].id, scorerA.id);
-  svc.finishLive(m.id);
-  const done = svc.getMatch(m.id);
-  assert.equal(`${done.score_a}-${done.score_b}`, '1-1');
-  assert.equal(svc.serializeMatch(done, orga).confirmed.find((e) => e.id === scorerA.id).goals, 1);
-  assert.equal(svc.serializeMatch(done, orga).live, null);
 });

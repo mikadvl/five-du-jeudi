@@ -66,23 +66,15 @@ for (let w = 6; w >= 1; w--) {
   const dto = svc.serializeMatch(svc.getMatch(m.id), users[0]);
   const A = dto.confirmed.filter((e) => e.team === 'A');
   const B = dto.confirmed.filter((e) => e.team === 'B');
-  const goals = {};
-  const score = (team) => {
-    const n = Math.floor(rnd() * 9) + 2;
-    for (let g = 0; g < n; g++) {
-      const e = team[Math.floor(rnd() * team.length)];
-      goals[e.id] = (goals[e.id] || 0) + 1;
-    }
-    return n;
-  };
-  const scoreA = score(A);
-  const scoreB = score(B);
-  svc.saveResult(m.id, { scoreA, scoreB, goals });
-  const top = Object.entries(goals).sort((a, b) => b[1] - a[1])[0][0];
+  const scoreA = Math.floor(rnd() * 9) + 2;
+  const scoreB = Math.floor(rnd() * 9) + 2;
+  svc.saveResult(m.id, { scoreA, scoreB });
+  const top = dto.confirmed[Math.floor(rnd() * dto.confirmed.length)].id;
   for (const e of dto.confirmed) {
-    if (e.id === Number(top)) continue;
+    if (e.id === top) continue;
     const voter = users.find((u) => u.id === e.userId);
-    svc.vote(m.id, voter, rnd() < 0.7 ? Number(top) : dto.confirmed[Math.floor(rnd() * 12)].id === e.id ? Number(top) : dto.confirmed[Math.floor(rnd() * 12)].id);
+    const others = dto.confirmed.filter((x) => x.id !== e.id);
+    svc.vote(m.id, voter, rnd() < 0.7 ? top : others[Math.floor(rnd() * others.length)].id);
   }
 }
 
