@@ -157,6 +157,27 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
     }
   }
 
+  /** Match au complet : une seule notif par match, aux titulaires et aux organisateurs/capitaines. */
+  function checkFull(matchId) {
+    const m = getMatch(matchId);
+    if (!m || m.cancelled || isPlayed(m) || isStarted(m)) return;
+    if (confirmedCount(m.id) < m.capacity) return;
+    once(`full:${m.id}`, () => {
+      const when = `${dayLabel(m.starts_at)} à ${timeLabel(m.starts_at)}`;
+      const players = new Set(
+        db.prepare("SELECT DISTINCT user_id FROM entries WHERE match_id = ? AND state = 'active' AND spot = 'confirmed'").all(m.id).map((r) => r.user_id),
+      );
+      const staff = db
+        .prepare("SELECT id FROM users WHERE active = 1 AND role IN ('admin', 'captain')")
+        .all()
+        .map((u) => u.id)
+        .filter((id) => !players.has(id));
+      const base = { title: `C'est complet ! ${m.capacity}/${m.capacity}`, url: `/#/match/${m.id}`, tag: `match-${m.id}` };
+      fire([...players], { ...base, body: `Le five du ${when} est au complet, tu joues. Si tu ne peux plus venir, désiste-toi vite pour laisser ta place.` });
+      fire(staff, { ...base, body: `Le five du ${when} est au complet. Les prochains inscrits passent en liste d'attente.` });
+    });
+  }
+
   // ---------- Inscriptions ----------
   function join(matchId, user, guests = []) {
     const m = requireMatch(matchId);
@@ -172,6 +193,7 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
       const g = cleaned.map((x) => insertEntry(m, user.id, x));
       return { entry: me, guests: g };
     });
+    checkFull(m.id);
     return res;
   }
 
@@ -190,6 +212,7 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
       if (n >= 4) throw bad('4 invités maximum');
       return insertEntry(m, user.id, g);
     });
+    checkFull(m.id);
     return res;
   }
 
@@ -205,6 +228,7 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
       if (exists) throw conflict('Ce joueur est déjà inscrit');
       return insertEntry(m, u.id, null);
     });
+    checkFull(m.id);
     if (u.id !== admin.id) {
       const when = `${dayLabel(m.starts_at)} à ${timeLabel(m.starts_at)}`;
       fire([u.id], {
@@ -467,6 +491,7 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
       return next.capacity !== m.capacity ? normalize(getMatch(m.id)) : [];
     });
     notifyPromoted(next, promoted);
+    checkFull(m.id);
     if (next.starts_at !== m.starts_at || next.location !== m.location) {
       const users = activeEntries(m.id).map((e) => e.user_id);
       fire(users, {

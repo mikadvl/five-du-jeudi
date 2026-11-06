@@ -374,3 +374,22 @@ test('équilibrage : attaquants et défenseurs répartis des deux côtés', () =
     assert.equal(attA, 1, `compo déséquilibrée : ${r.A.join(',')}`);
   }
 });
+
+test('notif « complet » une seule fois, aux titulaires et aux organisateurs', async () => {
+  const { svc, addUser, sent, flush } = setup();
+  const orga = addUser('Orga', 5, 'admin');
+  const m = matchIn(svc);
+  const ps = Array.from({ length: 13 }, (_, i) => addUser(`F${i}`));
+  ps.slice(0, 11).forEach((p) => svc.join(m.id, p));
+  await flush();
+  assert.equal(sent.filter((x) => x.title.startsWith("C'est complet")).length, 0);
+  svc.join(m.id, ps[11]);
+  await flush();
+  const full = sent.filter((x) => x.title.startsWith("C'est complet"));
+  assert.equal(full.length, 2);
+  assert.equal(full[0].ids.length, 12);
+  assert.deepEqual(full[1].ids, [orga.id]);
+  svc.join(m.id, ps[12]); // liste d'attente : pas de nouvelle notif
+  await flush();
+  assert.equal(sent.filter((x) => x.title.startsWith("C'est complet")).length, 2);
+});
