@@ -351,14 +351,14 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
 
   /** Joueurs à noter par `rater`, avec les notes qu'il a déjà mises. */
   function ratingsFor(rater) {
-    const players = db.prepare('SELECT id, name FROM users WHERE active = 1 AND id <> ? ORDER BY name_key').all(rater.id);
+    const players = db.prepare('SELECT id, name, role, games FROM users WHERE active = 1 AND id <> ? ORDER BY name_key').all(rater.id);
     const mine = db.prepare('SELECT target_id, attr, rating FROM attr_ratings WHERE rater_id = ?').all(rater.id);
     const by = new Map();
     for (const r of mine) {
       if (!by.has(r.target_id)) by.set(r.target_id, {});
       by.get(r.target_id)[r.attr] = r.rating;
     }
-    return { min: PEER_MIN, attrs: ATTRS, players: players.map((p) => ({ id: p.id, name: p.name, myRatings: by.get(p.id) || null })) };
+    return { min: PEER_MIN, attrs: ATTRS, players: players.map((p) => ({ id: p.id, name: p.name, role: p.role, games: p.games, card: playerCard(p.id), myRatings: by.get(p.id) || null })) };
   }
 
   const unratedCount = (rater) =>

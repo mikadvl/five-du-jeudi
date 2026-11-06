@@ -599,33 +599,73 @@ function rateNudgeHtml(n) {
   </section>`;
 }
 
+const tierOf = (overall) => (overall >= 75 ? 'gold' : overall >= 60 ? 'silver' : 'bronze');
+const RATE_FILTERS = [
+  ['all', 'Tous'],
+  ['todo', 'À noter'],
+  ['done', 'Notés'],
+];
+
 async function viewRate() {
   const d = await api('GET', '/api/ratings');
   current.rate = d;
-  const avg = (r) => fmtNote(ATTRS.reduce((t, [k]) => t + r[k], 0) / ATTRS.length);
-  const todo = d.players.filter((p) => !p.myRatings).length;
+  const total = d.players.length;
+  const done = d.players.filter((p) => p.myRatings).length;
+  const todo = total - done;
+  const filter = current.rateFilter || 'all';
+  const shown = d.players
+    .filter((p) => (filter === 'todo' ? !p.myRatings : filter === 'done' ? p.myRatings : true))
+    .sort((a, b) => b.card.overall - a.card.overall || a.name.localeCompare(b.name));
+  const pct = total ? Math.round((done / total) * 100) : 0;
   view.innerHTML = `
-    <div class="section-head" style="padding-top:12px"><h1>Noter les joueurs</h1><button class="link" data-action="glossary">Glossaire</button></div>
-    <p class="muted">Note chaque joueur sur 6 qualités, de 1 à 10. Sa carte affiche la moyenne des notes reçues dès ${d.min} votants, et l'app s'en sert pour répartir attaquants, défenseurs et techniciens des deux côtés.</p>
-    <p class="small muted">${todo ? `${plural(todo, 'joueur')} à noter.` : 'Tu as noté tout le monde. Tu peux changer tes notes à tout moment.'}</p>
+    <div class="section-head" style="padding-top:12px"><h1>L'effectif</h1><button class="link" data-action="glossary">Glossaire</button></div>
+    <section class="card rate-board">
+      <div class="rate-board-text">
+        <span class="rate-board-kicker">Ton mercato</span>
+        <strong>${todo ? `${plural(todo, 'joueur')} à noter` : 'Tout le monde est noté'}</strong>
+        <span class="small">${todo ? 'Touche une carte pour noter le joueur sur 6 qualités.' : 'Tu peux revoir tes notes quand tu veux.'}</span>
+      </div>
+      <div class="rate-ring" style="--p:${pct}" role="img" aria-label="${done} joueurs notés sur ${total}"><span>${done}<small>/${total}</small></span></div>
+    </section>
+    <div class="segmented rate-filter" role="group" aria-label="Filtrer les joueurs">${RATE_FILTERS.map(
+      ([k, label]) => `<button data-action="rate-filter" data-filter="${k}" aria-pressed="${k === filter}">${label}${k === 'todo' && todo ? ` <span class="seg-count">${todo}</span>` : ''}</button>`,
+    ).join('')}</div>
     ${
-      d.players.length
-        ? `<ul class="list card card-tight">${d.players
-            .map(
-              (p) => `<li><button class="row" data-action="rate-player" data-id="${p.id}">
-          <span class="av av-sm" aria-hidden="true">${esc(initials(p.name))}</span>
-          <span class="grow"><span class="title">${esc(p.name)}</span>${p.myRatings ? `<span class="sub">Ta moyenne : ${avg(p.myRatings)}</span>` : ''}</span>
-          ${p.myRatings ? '<span class="chip chip-open">Noté</span>' : '<span class="chip chip-full">À noter</span>'}${ICON.chevron}
-        </button></li>`,
-            )
-            .join('')}</ul>`
-        : '<p class="card empty">Personne à noter pour le moment.</p>'
+      shown.length
+        ? `<ul class="squad">${shown.map(miniCardHtml).join('')}</ul>
+           <p class="small muted squad-note">Une carte devient officielle dès ${plural(d.min, 'votant')} : avant, elle affiche le niveau déclaré (chiffres pâles).</p>`
+        : `<p class="card empty">${filter === 'todo' ? 'Tu as noté tout le monde. Bien joué !' : filter === 'done' ? "Tu n'as encore noté personne." : 'Personne à noter pour le moment.'}</p>`
     }`;
+}
+
+/** Mini carte FUT cliquable pour l'onglet Noter. */
+function miniCardHtml(p) {
+  const c = p.card;
+  const official = c.raters >= PEER_MIN;
+  const band = p.role === 'captain' ? '<span class="mini-band" title="Capitaine" aria-label="Capitaine">C</span>' : p.role === 'admin' ? '<span class="mini-band mini-band-orga" title="Organisateur" aria-label="Organisateur">O</span>' : '';
+  const mine = p.myRatings ? Math.round((ATTRS.reduce((t, [k]) => t + p.myRatings[k], 0) / ATTRS.length) * 10) : null;
+  return `<li><button class="mini-fut fut-${tierOf(c.overall)}${p.myRatings ? ' is-rated' : ''}" data-action="rate-player" data-id="${p.id}"
+      aria-label="${esc(p.name)}, ${c.overall}, ${esc(c.profile)}${p.myRatings ? `, ta note ${mine}` : ', à noter'}">
+    <span class="mini-top">
+      <span class="mini-ovr${official ? '' : ' is-base'}">${c.overall}</span>
+      <span class="mini-av" aria-hidden="true">${esc(initials(p.name))}${band}</span>
+    </span>
+    <span class="mini-profile">${esc(c.profile)}</span>
+    <span class="mini-name">${esc(p.name)}</span>
+    <span class="mini-stats" aria-hidden="true">${ATTRS.map(([k, short]) => `<span class="${c.attrs[k].rated ? '' : 'is-base'}"><b>${Math.round(c.attrs[k].value * 10)}</b>${short}</span>`).join('')}</span>
+    <span class="mini-foot">${p.myRatings ? `<span class="mini-tag is-done">✓ Ta note ${mine}</span>` : '<span class="mini-tag is-todo">À noter</span>'}<span class="mini-meta">${plural(c.raters, 'vote')}</span></span>
+  </button></li>`;
 }
 
 function rateSheet(p) {
   const r = p.myRatings || {};
-  openSheet(`<h2 id="sheet-title">Noter ${esc(p.name)}</h2>
+  const c = p.card;
+  const avg = Math.round((ATTRS.reduce((t, [k]) => t + (r[k] ?? 5), 0) / ATTRS.length) * 10);
+  openSheet(`<div class="rate-head fut-${tierOf(c.overall)}">
+      <span class="mini-av" aria-hidden="true">${esc(initials(p.name))}</span>
+      <div class="grow"><h2 id="sheet-title">${esc(p.name)}</h2><span class="small">${esc(c.profile)}, carte à ${c.overall}${c.raters >= PEER_MIN ? '' : ' (provisoire)'}</span></div>
+      <div class="rate-live"><output data-out="avg">${avg}</output><span>ta note</span></div>
+    </div>
     <form data-form="rate" data-id="${p.id}" class="form-grid">
       ${ATTRS.map(
         ([k, , label, hint]) => `<label class="field attr-field">
@@ -912,6 +952,10 @@ const actions = {
     render();
   },
   glossary: () => glossarySheet(),
+  'rate-filter'(el) {
+    current.rateFilter = el.dataset.filter;
+    render();
+  },
   'rate-player'(el) {
     const p = current.rate?.players.find((x) => x.id === Number(el.dataset.id));
     if (p) rateSheet(p);
@@ -1202,6 +1246,12 @@ document.addEventListener('input', (e) => {
   if (e.target.matches('[data-attr]')) {
     const out = e.target.closest('form').querySelector(`[data-out="${e.target.dataset.attr}"]`);
     if (out) out.textContent = e.target.value;
+    const form = e.target.closest('form');
+    const avgOut = sheetEl.querySelector('[data-out="avg"]');
+    if (avgOut && form) {
+      const vals = [...form.querySelectorAll('[data-attr]')].map((x) => Number(x.value));
+      avgOut.textContent = Math.round((vals.reduce((t, v) => t + v, 0) / vals.length) * 10);
+    }
   }
   if (e.target.matches('input[name=location]')) {
     e.target
