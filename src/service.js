@@ -178,6 +178,25 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
     });
   }
 
+  /**
+   * Journal des capitaines : chaque action d'un capitaine est signalée aux organisateurs (notif push).
+   * `when` = date du match concerné (ISO ou Date), `text` commence par un verbe (« a fait les équipes »).
+   */
+  function notifyCaptainAction(actor, { when, matchId, text }) {
+    if (!actor || actor.role !== 'captain') return;
+    if (settings().notify_captain_actions !== '1') return;
+    const admins = db.prepare("SELECT id FROM users WHERE active = 1 AND role = 'admin' AND id <> ?").all(actor.id).map((u) => u.id);
+    if (!admins.length) return;
+    const iso = when instanceof Date ? when.toISOString() : when;
+    fire(admins, {
+      title: `${actor.name} (capitaine)`,
+      body: `${cap(text)}${iso ? `, match du ${dayLabel(iso)}` : ''}.`,
+      url: matchId ? `/#/match/${matchId}` : '/#/calendrier',
+      tag: `captain-${actor.id}-${matchId || 'cal'}`,
+      pushOnly: true,
+    });
+  }
+
   // ---------- Inscriptions ----------
   function join(matchId, user, guests = []) {
     const m = requireMatch(matchId);
@@ -1121,6 +1140,7 @@ export function createService(db, { notifier = { send: async () => ({}) }, clock
 
   return {
     settings,
+    notifyCaptainAction,
     getMatch,
     requireMatch,
     join,

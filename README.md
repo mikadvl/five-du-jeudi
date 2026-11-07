@@ -18,7 +18,7 @@ Node.js + SQLite, aucune dépendance externe en dehors d'Express, Web Push et (o
   - rappel aux joueurs avec leur équipe (par défaut 8 h avant, soit le jeudi midi) ;
   - instantané : match complet, place libérée, équipes faites, match modifié ou annulé, score saisi.
 
-Rôles : le premier compte créé est **organisateur** (réglages du groupe, comptes, niveaux, et tout ce que fait un capitaine). Un organisateur peut nommer des **capitaines** : ils gèrent les matchs (équipes, score, lieu, date, inscrits, annulation) sans accès aux réglages ni aux comptes. Pratique pour déléguer quand l'organisateur n'est pas là.
+Rôles : le premier compte créé est **organisateur** (réglages du groupe, comptes, niveaux, et tout ce que fait un capitaine). Un organisateur peut nommer des **capitaines** : ils gèrent les matchs (équipes, score, lieu, date, inscrits, annulation) sans accès aux réglages ni aux comptes. Pratique pour déléguer quand l'organisateur n'est pas là. Chaque action d'un capitaine (match créé, modifié ou annulé, joueur inscrit ou retiré, équipes, score) est signalée aux organisateurs par une notification (désactivable dans Organisation).
 
 ## Essayer en local
 

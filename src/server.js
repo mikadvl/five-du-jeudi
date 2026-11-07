@@ -65,6 +65,7 @@ const EDITABLE_SETTINGS = {
   remind_confirmed_hours: (v) => intRange(v, 0, 72, 'Rappel aux joueurs'),
   remind_open: (v) => (v === true || v === '1' || v === 1 ? 1 : 0),
   notify_staff_signups: (v) => (v === true || v === '1' || v === 1 ? 1 : 0),
+  notify_captain_actions: (v) => (v === true || v === '1' || v === 1 ? 1 : 0),
   team_a_name: (v) => str(v, 1, 20, 'Nom équipe A'),
   team_b_name: (v) => str(v, 1, 20, 'Nom équipe B'),
   mvp_vote_hours: (v) => intRange(v, 1, 168, 'Durée du vote'),
@@ -266,8 +267,19 @@ export function createApp({ db, service, notifier, trustProxy = true }) {
     service.ratePlayer(req.user, req.params.userId, req.body?.ratings ?? null);
     res.json({ ok: true });
   });
+  /** Signale l'action d'un capitaine aux organisateurs (ne fait rien pour un organisateur). */
+  const logMatch = (req, matchId, text) => {
+    const m = service.getMatch(Number(matchId));
+    service.notifyCaptainAction(req.user, { when: m?.starts_at, matchId: m?.id, text });
+  };
+  const entryName = (e) => e.guest_name || db.prepare('SELECT name FROM users WHERE id = ?').get(e.user_id)?.name || 'un joueur';
+
   app.put('/api/planned/:slot', requireManager, (req, res) => {
-    res.json(service.planSlot(String(req.params.slot), { location: req.body?.location, skipped: !!req.body?.skipped }));
+    const r = service.planSlot(String(req.params.slot), { location: req.body?.location, skipped: !!req.body?.skipped });
+    const when = `${req.params.slot}T12:00:00Z`;
+    const text = req.body?.skipped ? 'a marqué « pas de five »' : req.body?.location ? `a changé le lieu : ${String(req.body.location).slice(0, 120)}` : 'a remis le lieu habituel';
+    service.notifyCaptainAction(req.user, { when, text });
+    res.json(r);
   });
   app.get('/api/matches', requireUser, (req, res) => res.json(service.listMatches(req.user)));
   app.get('/api/matches/:id', requireUser, (req, res) => res.json(matchDto(req, req.params.id)));
@@ -281,9 +293,10 @@ export function createApp({ db, service, notifier, trustProxy = true }) {
     res.json(matchDto(req, req.params.id));
   });
   app.post('/api/entries/:id/cancel', requireUser, (req, res) => {
-    const e = db.prepare('SELECT match_id FROM entries WHERE id = ?').get(Number(req.params.id));
+    const e = db.prepare('SELECT match_id, user_id, guest_name FROM entries WHERE id = ?').get(Number(req.params.id));
     if (!e) throw new HttpError(404, 'Inscription introuvable');
     service.cancelEntry(req.params.id, req.user);
+    if (e.user_id !== req.user.id) logMatch(req, e.match_id, `a retiré ${entryName(e)}`);
     res.json(matchDto(req, e.match_id));
   });
   app.post('/api/matches/:id/mvp', requireUser, (req, res) => {
@@ -294,6 +307,7 @@ export function createApp({ db, service, notifier, trustProxy = true }) {
   // Admin – matchs
   app.post('/api/matches', requireManager, (req, res) => {
     const m = service.createMatch(req.body || {});
+    logMatch(req, m.id, 'a créé un match');
     res.status(201).json(service.serializeMatch(m, req.user));
   });
   app.get('/api/matches/:id/edit', requireManager, (req, res) => {
@@ -301,39 +315,59 @@ export function createApp({ db, service, notifier, trustProxy = true }) {
     res.json({ startsAt: toLocalInput(new Date(m.starts_at), getSettings(db).timezone), location: m.location, capacity: m.capacity, notes: m.notes });
   });
   app.put('/api/matches/:id', requireManager, (req, res) => {
+    const before = service.requireMatch(req.params.id);
     service.updateMatch(req.params.id, req.body || {});
+    const after = service.getMatch(before.id);
+    const tz = getSettings(db).timezone;
+    const changes = [];
+    if (after.starts_at !== before.starts_at) changes.push(`date ou heure (${toLocalInput(new Date(after.starts_at), tz).replace('T', ' à ')})`);
+    if (after.location !== before.location) changes.push(`lieu (${after.location || 'aucun'})`);
+    if (after.capacity !== before.capacity) changes.push(`places (${before.capacity} → ${after.capacity})`);
+    if (after.notes !== before.notes) changes.push('infos');
+    if (changes.length) service.notifyCaptainAction(req.user, { when: before.starts_at, matchId: before.id, text: `a modifié ${changes.join(', ')}` });
     res.json(matchDto(req, req.params.id));
   });
   app.post('/api/matches/:id/cancel', requireManager, (req, res) => {
     service.cancelMatch(req.params.id, req.body?.reason);
+    logMatch(req, req.params.id, `a annulé le match${req.body?.reason ? ` (${String(req.body.reason).slice(0, 200)})` : ''}`);
     res.json(matchDto(req, req.params.id));
   });
   app.post('/api/matches/:id/restore', requireManager, (req, res) => {
     service.restoreMatch(req.params.id);
+    logMatch(req, req.params.id, 'a rétabli le match');
     res.json(matchDto(req, req.params.id));
   });
   app.post('/api/matches/:id/players', requireManager, (req, res) => {
     service.addPlayer(req.params.id, req.user, req.body?.userId);
+    const u = db.prepare('SELECT id, name FROM users WHERE id = ?').get(Number(req.body?.userId));
+    if (u && u.id !== req.user.id) logMatch(req, req.params.id, `a inscrit ${u.name}`);
     res.json(matchDto(req, req.params.id));
   });
   app.post('/api/matches/:id/teams', requireManager, (req, res) => {
     service.generateTeams(req.params.id);
+    logMatch(req, req.params.id, 'a fait les équipes');
     res.json(matchDto(req, req.params.id));
   });
   app.put('/api/matches/:id/teams', requireManager, (req, res) => {
     service.setTeams(req.params.id, req.body?.assignments || {});
+    logMatch(req, req.params.id, 'a modifié les équipes');
     res.json(matchDto(req, req.params.id));
   });
   app.delete('/api/matches/:id/teams', requireManager, (req, res) => {
     service.clearTeams(req.params.id);
+    logMatch(req, req.params.id, 'a défait les équipes');
     res.json(matchDto(req, req.params.id));
   });
   app.put('/api/matches/:id/result', requireManager, (req, res) => {
     service.saveResult(req.params.id, { scoreA: req.body?.scoreA, scoreB: req.body?.scoreB });
+    const r = service.getMatch(Number(req.params.id));
+    const s = getSettings(db);
+    logMatch(req, req.params.id, `a saisi le score : ${s.team_a_name} ${r.score_a} – ${r.score_b} ${s.team_b_name}`);
     res.json(matchDto(req, req.params.id));
   });
   app.delete('/api/matches/:id/result', requireManager, (req, res) => {
     service.clearResult(req.params.id);
+    logMatch(req, req.params.id, 'a effacé le score');
     res.json(matchDto(req, req.params.id));
   });
 

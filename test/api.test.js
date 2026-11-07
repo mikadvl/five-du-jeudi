@@ -6,7 +6,15 @@ import { createApp } from '../src/server.js';
 
 async function boot() {
   const db = openDb(':memory:');
-  const notifier = { publicKey: 'test', emailEnabled: false, send: async () => ({ push: 0, email: 0 }) };
+  const sent = [];
+  const notifier = {
+    publicKey: 'test',
+    emailEnabled: false,
+    send: async (ids, payload) => {
+      sent.push({ ids, ...payload });
+      return { push: 0, email: 0 };
+    },
+  };
   const service = createService(db, { notifier });
   const app = createApp({ db, service, notifier, trustProxy: false });
   const server = await new Promise((r) => {
@@ -26,7 +34,7 @@ async function boot() {
       return { status: res.status, body: await res.json().catch(() => ({})) };
     };
   };
-  return { db, server, client, code: getSettings(db).invite_code };
+  return { db, server, client, sent, code: getSettings(db).invite_code };
 }
 
 test('parcours API : inscription, droits, match, +1, désistement', async () => {
@@ -174,6 +182,38 @@ test('mise à jour depuis l’app : réservée aux organisateurs, refusée si no
     const u = await orga('POST', '/api/admin/update');
     assert.equal(u.status, 502);
     assert.match(u.body.error, /non configurée/);
+  } finally {
+    server.close();
+  }
+});
+
+test('actions d’un capitaine signalées aux organisateurs (pas les leurs)', async () => {
+  const { server, client, sent, code } = await boot();
+  const wait = () => new Promise((r) => setTimeout(r, 10));
+  try {
+    const orga = client();
+    const cap = client();
+    const o = await orga('POST', '/api/auth/register', { name: 'Orga', password: 'secret1', inviteCode: code });
+    const r = await cap('POST', '/api/auth/register', { name: 'Capi', password: 'secret1', inviteCode: code });
+    await orga('PUT', `/api/admin/users/${r.body.user.id}`, { role: 'captain' });
+    await wait();
+    sent.length = 0;
+    const m = await cap('POST', '/api/matches', { startsAt: '2030-01-10T20:00', location: 'Five', capacity: 10 });
+    await cap('PUT', `/api/matches/${m.body.id}`, { location: 'UrbanSoccer Montaudran', capacity: 12 });
+    await wait();
+    const logs = sent.filter((x) => x.title === 'Capi (capitaine)');
+    assert.equal(logs.length, 2);
+    assert.deepEqual(logs[0].ids, [o.body.user.id]);
+    assert.match(logs[0].body, /^A créé un match, match du/);
+    assert.match(logs[1].body, /lieu \(UrbanSoccer Montaudran\), places \(10 → 12\)/);
+    sent.length = 0;
+    await orga('PUT', `/api/matches/${m.body.id}`, { location: 'Five' }); // un orga : pas de journal
+    await wait();
+    assert.equal(sent.filter((x) => x.title.endsWith('(capitaine)')).length, 0);
+    await orga('PUT', '/api/admin/settings', { notify_captain_actions: 0 });
+    await cap('POST', `/api/matches/${m.body.id}/cancel`, { reason: 'pluie' });
+    await wait();
+    assert.equal(sent.filter((x) => x.title.endsWith('(capitaine)')).length, 0);
   } finally {
     server.close();
   }
